@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir /s /a)",
+      "Bash(xargs grep -l \"scheduled\\\\|cron\\\\|task\\\\|recurring\")",
+      "Bash(xargs grep -l \"hook\\\\|extension\\\\|automation\")",
+      "Bash(xargs grep -l \"model\\\\|haiku\\\\|sonnet\\\\|opus\")",
+      "WebSearch",
+      "Bash(node scripts/analyze-complexity.js)",
+      "Bash(claude plugin add \"G:/LM_Studio_Workdir/Claude Modell Changer\")",
+      "Bash(claude plugin --help)",
+      "Bash(claude plugin install --help)",
+      "Bash(claude plugin marketplace --help)",
+      "Bash(claude plugin marketplace add --help)",
+      "Bash(claude plugin validate \"G:/LM_Studio_Workdir/Claude Modell Changer\")",
+      "Bash(claude plugin marketplace list)",
+      "Bash(claude plugin marketplace add \"G:/LM_Studio_Workdir/Claude Modell Changer\")"
+    ]
+  }
+}

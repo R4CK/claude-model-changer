@@ -1,0 +1,9 @@
+{
+  "name": "claude-model-changer",
+  "version": "1.0.0",
+  "description": "Automatically routes tasks to the appropriate Claude model (haiku/sonnet/opus) based on complexity analysis. Predefined task-to-model mappings are fully user-configurable.",
+  "author": {
+    "name": "NEON"
+  },
+  "keywords": ["model-routing", "complexity", "optimization", "cost-saving"]
+}

@@ -1,0 +1,172 @@
+{
+  "version": "1.0",
+  "behavior": "suggest",
+  "models": {
+    "haiku": {
+      "label": "Simple / Fast",
+      "scoreRange": [1, 3],
+      "categories": {
+        "typo_fix": {
+          "label": "Typo fixes",
+          "keywords": ["fix typo", "fix the typo", "fix a typo", "typo", "spelling", "misspelling", "typos", "spellcheck"]
+        },
+        "rename": {
+          "label": "Renames",
+          "keywords": ["rename", "change name", "change variable name", "rename variable", "rename function"]
+        },
+        "formatting": {
+          "label": "Formatting",
+          "keywords": ["formatting", "indent", "whitespace", "format", "prettify", "lint fix", "fix lint"]
+        },
+        "comments": {
+          "label": "Comments",
+          "keywords": ["comment", "uncomment", "add comment", "remove comment", "comment out"]
+        },
+        "imports": {
+          "label": "Imports",
+          "keywords": ["add import", "update import", "remove import", "remove unused"]
+        },
+        "quick_questions": {
+          "label": "Quick questions",
+          "keywords": ["what is", "what does", "where is", "which file", "explain this", "what's the difference", "is this correct", "how do i"]
+        },
+        "search_list": {
+          "label": "Search / List",
+          "keywords": ["show me", "list", "find", "search for", "grep", "count", "locate", "show files"]
+        },
+        "single_line_edit": {
+          "label": "Single-line edits",
+          "keywords": ["change the", "update the", "set the", "replace the text", "swap", "move this", "delete line", "add a line", "remove the line"]
+        },
+        "status": {
+          "label": "Status checks",
+          "keywords": ["git status", "git log", "git diff", "check", "verify", "status"]
+        }
+      }
+    },
+    "sonnet": {
+      "label": "Moderate / Balanced",
+      "scoreRange": [4, 7],
+      "categories": {
+        "feature_addition": {
+          "label": "Feature addition",
+          "keywords": ["add feature", "implement", "create function", "new feature", "add support", "create a new", "build a"]
+        },
+        "bug_fixing": {
+          "label": "Bug fixing",
+          "keywords": ["fix bug", "debug", "fix the bug", "fix the issue", "fix the error", "fix the problem", "bugfix", "troubleshoot", "diagnose", "investigate bug", "not working", "broken"]
+        },
+        "testing": {
+          "label": "Testing",
+          "keywords": ["write test", "add test", "unit test", "test coverage", "e2e test", "integration test", "test case"]
+        },
+        "code_review": {
+          "label": "Code review",
+          "keywords": ["review", "code review", "check for bugs", "suggest improvements", "find issues", "review this"]
+        },
+        "small_refactoring": {
+          "label": "Small refactoring",
+          "keywords": ["refactor this", "clean up", "simplify", "optimize this", "extract function", "extract method", "extract component"]
+        },
+        "component_creation": {
+          "label": "Component creation",
+          "keywords": ["create component", "add component", "new component", "create a class", "create module"]
+        },
+        "integration": {
+          "label": "Integration",
+          "keywords": ["integrate", "connect", "hook up", "wire up", "add API", "endpoint", "add route"]
+        },
+        "configuration": {
+          "label": "Configuration",
+          "keywords": ["configure", "set up", "install", "setup", "init", "initialize", "bootstrap"]
+        },
+        "error_handling": {
+          "label": "Error handling",
+          "keywords": ["error handling", "validation", "add validation", "handle edge case", "handle error", "try catch"]
+        },
+        "documentation": {
+          "label": "Documentation",
+          "keywords": ["document", "add docs", "docstring", "jsdoc", "update readme", "write docs", "API docs"]
+        }
+      }
+    },
+    "opus": {
+      "label": "Complex / Expert",
+      "scoreRange": [8, 10],
+      "categories": {
+        "architecture": {
+          "label": "Architecture",
+          "keywords": ["architect", "architecture", "system design", "design pattern", "redesign", "rearchitect"]
+        },
+        "large_refactoring": {
+          "label": "Large refactoring",
+          "keywords": ["refactor entire", "restructure", "rewrite", "migrate", "overhaul", "modernize", "refactor across"]
+        },
+        "multi_file_work": {
+          "label": "Multi-file work",
+          "keywords": ["across all files", "entire project", "full stack", "project-wide", "codebase-wide", "every file", "throughout the codebase"]
+        },
+        "algorithms": {
+          "label": "Algorithms",
+          "keywords": ["algorithm", "data structure", "optimize performance", "concurrency", "parallel", "thread-safe", "distributed"]
+        },
+        "security": {
+          "label": "Security",
+          "keywords": ["security audit", "vulnerability", "security review", "penetration", "OWASP", "security analysis"]
+        },
+        "performance": {
+          "label": "Performance",
+          "keywords": ["performance audit", "profiling", "benchmark", "optimize across", "bottleneck", "performance optimization"]
+        },
+        "planning": {
+          "label": "Planning",
+          "keywords": ["implementation plan", "migration plan", "roadmap", "comprehensive analysis", "thorough review", "tech strategy"]
+        },
+        "system_design": {
+          "label": "System design",
+          "keywords": ["state machine", "cache invalidation", "consensus", "event-driven", "microservices", "message queue"]
+        },
+        "tech_debt": {
+          "label": "Tech debt",
+          "keywords": ["tech debt", "technical debt", "legacy code", "deprecation strategy", "end of life", "sunset"]
+        }
+      }
+    }
+  },
+  "scoring": {
+    "weights": {
+      "keyword": 0.35,
+      "multiFile": 0.20,
+      "structure": 0.20,
+      "wordCount": 0.15,
+      "codeBlocks": 0.10
+    },
+    "questionReduction": 0.8,
+    "multiFileIndicators": [
+      "multiple files", "several files", "all files", "across files",
+      "many files", "each file", "every file", "throughout",
+      "project-wide", "codebase-wide", "repo-wide",
+      "components", "modules", "services", "layers",
+      "frontend and backend", "client and server",
+      "database and api", "api and ui"
+    ]
+  },
+  "overrideMarkers": ["@haiku", "@sonnet", "@opus"],
+  "autoMode": {
+    "enabled": true,
+    "autoThresholds": {
+      "haiku": [1, 2],
+      "opus": [9, 10]
+    },
+    "borderlineZones": [3, 4, 7, 8]
+  },
+  "costEstimates": {
+    "haiku": { "inputPer1M": 0.25, "outputPer1M": 1.25, "label": "~10x cheaper than opus" },
+    "sonnet": { "inputPer1M": 3.00, "outputPer1M": 15.00, "label": "balanced cost/performance" },
+    "opus": { "inputPer1M": 15.00, "outputPer1M": 75.00, "label": "most capable, highest cost" }
+  },
+  "logging": {
+    "enabled": true,
+    "maxEntries": 1000
+  }
+}

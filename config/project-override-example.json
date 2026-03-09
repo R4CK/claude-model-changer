@@ -1,0 +1,35 @@
+{
+  "_comment": "Example project-specific config override. Copy this to .claude/model-routing.json in your project root to customize routing for that project.",
+
+  "models": {
+    "haiku": {
+      "categories": {
+        "docs_only": {
+          "label": "Documentation changes",
+          "keywords": ["readme", "changelog", "docs update", "documentation fix"]
+        }
+      }
+    },
+    "opus": {
+      "categories": {
+        "critical_path": {
+          "label": "Critical path code",
+          "keywords": ["auth module", "payment", "billing", "core engine"]
+        }
+      }
+    }
+  },
+
+  "autoMode": {
+    "enabled": false,
+    "_comment": "Disable auto mode for this security-critical project - always ask"
+  },
+
+  "scoring": {
+    "weights": {
+      "keyword": 0.40,
+      "multiFile": 0.25,
+      "_comment": "This project has many cross-file dependencies, so multi-file weight is higher"
+    }
+  }
+}

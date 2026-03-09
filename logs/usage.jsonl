@@ -1,0 +1,4 @@
+{"timestamp":"2026-03-09T21:01:25.315Z","score":1,"level":"SIMPLE","model":"haiku","category":"Typo fixes","override":false,"borderline":false,"autoRouted":true,"promptPreview":"fix the typo on line 3"}
+{"timestamp":"2026-03-09T21:01:25.370Z","score":1,"level":"SIMPLE","model":"haiku","category":"Comments","override":false,"borderline":false,"autoRouted":true,"promptPreview":"add a comment explaining what this complex function does and verify it works"}
+{"timestamp":"2026-03-09T21:01:25.433Z","score":4,"level":"MEDIUM","model":"sonnet","category":"Feature addition","override":false,"borderline":true,"autoRouted":false,"promptPreview":"implement user login with JWT tokens"}
+{"timestamp":"2026-03-09T21:01:25.497Z","score":8,"level":"COMPLEX","model":"opus","category":"Performance","override":false,"borderline":true,"autoRouted":false,"promptPreview":"redesign the entire authentication architecture across all microservices with se"}
