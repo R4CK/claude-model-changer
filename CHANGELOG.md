@@ -1,5 +1,64 @@
 # Changelog
 
+## v2.3.0
+
+### Distribution
+- **Marketplace plugin**: Repo is now a canonical Claude Code marketplace.
+  Install via `claude plugin marketplace add https://github.com/R4CK/claude-model-changer`
+  + `claude plugin install claude-model-changer@r4ck`.
+- **Self-contained bundle**: `dist/install.js` (411 KB, 52 files embedded) for
+  offline / single-file install. Falls back to manual registration if the
+  Claude CLI isn't available.
+- **Cross-platform source installers**: `install.sh` (POSIX), `install.ps1`
+  (PowerShell), `install.bat` (cmd wrapper). Auto-install Node.js (>=16) via
+  winget / choco / apt / dnf / pacman / brew.
+
+### New checks
+- **`scripts/preflight.js`**: 11-point pre-install validator (Node version,
+  `~/.claude` writability, JSON validity, hook script references, hook dry-run,
+  marketplace owner resolution, etc.). CI-aware: skips local-only checks
+  under `CI=true` / `GITHUB_ACTIONS=true`.
+- **`scripts/runtime-check.js`**: New `SessionStart` hook performs a cached
+  (1h) integrity check on every session start. Silent on success; emits a
+  warning into the session context if plugin files are missing or corrupted.
+
+### Fixes
+- **Marketplace owner is now dynamic per-machine**: `install-plugin.js` and
+  the bundled `install.js` derive the owner from `<lowercase-username>-local`
+  by default (overridable via `CMC_MARKETPLACE_OWNER` env). Previously
+  hardcoded to `neon-local`, which was nonsensical on other users' machines.
+- **Plugin version is now read from `plugin.json` at runtime**: removed the
+  hardcoded `PLUGIN_VERSION = "5.3.3"` from `install-plugin.js`. There's a
+  single source of truth for the version now (`.claude-plugin/plugin.json`).
+- **Legacy `@local` entry cleanup**: an earlier buggy installer wrote the
+  registration key as `claude-model-changer@local` (mismatched against the
+  cache subdir). The fixed installer auto-removes that legacy entry from
+  both `installed_plugins.json` and `enabledPlugins` on next run.
+
+### Repository hygiene
+- **Branch protection on `main`**: PRs only, required CI status check,
+  Code Owner review, conversation resolution, linear history, no force
+  pushes, no deletions, no bypass.
+- **GitHub Actions CI** (`.github/workflows/preflight.yml`): preflight,
+  behavioral routing tests (typo→haiku, architecture→opus, bug fix→sonnet),
+  category count check, hook reference check, bundle reproducibility check,
+  marketplace.json structure check, and version sync check.
+- **CODEOWNERS, PR template, CONTRIBUTING.md**: structured contribution flow.
+
+### Documentation
+- Completely rewritten **README.md** for GitHub readers: 3 install paths,
+  scoring weights table, hook table, repo layout, troubleshooting.
+- New **INSTALL.md** with detailed install reference and `<OWNER>` resolution.
+- New **CONTRIBUTING.md** with local dev setup, testing requirements, code
+  style, and PR workflow.
+- Rewritten **dist/README.md** documenting the bundle's behavior.
+
+### Version sync
+All version numbers consolidated under **2.3.0** (was: plugin.json 2.2.0,
+package.json 5.1.0, install-plugin.js hardcoded 5.3.3, marketplace.json
+plugin entry 5.3.3). `plugin.json` is now the single source of truth;
+`install-plugin.js` reads from it at runtime; CI enforces consistency.
+
 ## v5.1.0
 
 ### Fixes

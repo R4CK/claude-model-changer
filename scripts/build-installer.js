@@ -29,10 +29,44 @@ function shouldExclude(relPath) {
   return false;
 }
 
+// Text file extensions whose line endings get normalized to LF before base64
+// encoding. This guarantees the bundle is byte-identical regardless of which
+// OS built it (Windows checkouts have CRLF; Linux has LF). Binary files are
+// passed through unchanged.
+var TEXT_EXTENSIONS = [".js", ".json", ".md", ".sh", ".ps1", ".bat", ".yml", ".yaml", ".txt", ".html", ".css"];
+
+function isTextFile(filePath) {
+  var ext = path.extname(filePath).toLowerCase();
+  if (TEXT_EXTENSIONS.indexOf(ext) !== -1) return true;
+  // Files without extension (LICENSE, etc.) - treat as text by default
+  if (ext === "") return true;
+  return false;
+}
+
+// Returns { content: <base64>, size: <normalized-byte-length> }
+// IMPORTANT: size MUST be the post-normalization length, NOT the on-disk
+// stat.size. fs.statSync() reports the disk size (CRLF-aware on Windows,
+// LF on Linux), which produces different bundles per OS even when the
+// content is identical after normalization.
+function readFileForBundle(filePath) {
+  if (isTextFile(filePath)) {
+    var text = fs.readFileSync(filePath, "utf8");
+    text = text.replace(/\r\n/g, "\n");
+    var buf = Buffer.from(text, "utf8");
+    return { content: buf.toString("base64"), size: buf.length };
+  }
+  var raw = fs.readFileSync(filePath);
+  return { content: raw.toString("base64"), size: raw.length };
+}
+
 function collectFiles(dir, base) {
   var results = [];
   if (!fs.existsSync(dir)) return results;
-  var entries = fs.readdirSync(dir);
+  // IMPORTANT: explicit sort. fs.readdirSync's order is OS-dependent
+  // (Windows: alphabetical; Linux: directory-insertion). Without sort, the
+  // bundle's embedded file order differs across platforms and the
+  // reproducibility check fails.
+  var entries = fs.readdirSync(dir).sort();
   for (var i = 0; i < entries.length; i++) {
     var fullPath = path.join(dir, entries[i]);
     var relPath = path.join(base, entries[i]).replace(/\\/g, "/");
@@ -41,10 +75,11 @@ function collectFiles(dir, base) {
     if (stat.isDirectory()) {
       results = results.concat(collectFiles(fullPath, relPath));
     } else {
+      var bundled = readFileForBundle(fullPath);
       results.push({
         path: relPath,
-        content: fs.readFileSync(fullPath).toString("base64"),
-        size: stat.size
+        content: bundled.content,
+        size: bundled.size  // normalized byte length (cross-OS reproducible)
       });
     }
   }
@@ -65,11 +100,11 @@ DIRS_TO_INCLUDE.forEach(function(d) {
 FILES_TO_INCLUDE.forEach(function(f) {
   var filePath = path.join(ROOT, f);
   if (fs.existsSync(filePath)) {
-    var stat = fs.statSync(filePath);
+    var bundled = readFileForBundle(filePath);
     allFiles.push({
       path: f,
-      content: fs.readFileSync(filePath).toString("base64"),
-      size: stat.size
+      content: bundled.content,
+      size: bundled.size  // normalized byte length
     });
   }
 });

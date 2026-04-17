@@ -13,7 +13,21 @@ var fs = require("fs");
 var path = require("path");
 
 var PLUGIN_NAME = "claude-model-changer";
-var PLUGIN_VERSION = "5.3.3";
+
+// PLUGIN_VERSION is read from .claude-plugin/plugin.json (single source of
+// truth). NEVER hardcode it here - the plugin.json version drives every
+// versioned artifact (cache dir, registration entry, manifest, etc.).
+var PLUGIN_VERSION = (function() {
+  try {
+    var manifestPath = path.join(__dirname, "..", ".claude-plugin", "plugin.json");
+    var manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+    if (!manifest.version) throw new Error("plugin.json has no version field");
+    return manifest.version;
+  } catch (err) {
+    console.error("[install] FATAL: cannot read plugin version from .claude-plugin/plugin.json: " + err.message);
+    process.exit(1);
+  }
+})();
 
 // Marketplace owner namespace. Used both as the cache subdir name
 // (~/.claude/plugins/cache/<OWNER>/...) and as the registration key suffix

@@ -1,6 +1,6 @@
 {
   "name": "claude-model-changer",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "Automatically routes tasks to the appropriate Claude model (haiku/sonnet/opus) based on complexity analysis. Features: subagent usage tracking, GSD-inspired goal verification, preflight checks, task splitting, enhanced borderline with history, plugin health check, adaptive weights, multi-language (EN/HU/DE), anomaly detection, 28 task categories.",
   "author": {
     "name": "NEON"
