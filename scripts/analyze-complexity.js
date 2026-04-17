@@ -34,6 +34,7 @@ var sessionUtils = require("./session-utils");
 var health = require("./lib/health");
 var autoTune = require("./lib/auto-tune");
 var learnLog = require("./lib/learn-log");
+var errorLog = require("./lib/error-log");
 
 // Startup cleanup: rotate debug log + trim all JSONL logs
 io.rotateDebugLog();
@@ -352,6 +353,11 @@ process.stdin.on("end", function() {
       "--health": function() {
         var report = health.getFullHealthReport();
         return JSON.stringify(report, null, 2);
+      },
+      "--errors": function() {
+        // T2.4 (v2.5.0): surface recent hook errors for /health and /errors commands
+        var summary = errorLog.summarize();
+        return JSON.stringify(summary, null, 2);
       },
       "--auto-tune": function() {
         var cfg = configModule.loadConfig(cwd);
@@ -747,7 +753,19 @@ process.stdin.on("end", function() {
     process.exit(0);
 
   } catch (err) {
+    // T2.4 (v2.5.0): log hook errors + surface to user so failures aren't silent
     process.stderr.write("[Model Router] Error: " + (err.message || err) + "\n");
+    try {
+      errorLog.logHookError({
+        script: "analyze-complexity.js",
+        phase: "main-handler",
+        error: err,
+        input: input,
+        sessionId: (function() { try { return JSON.parse(input).session_id; } catch (e) { return ""; } })()
+      });
+    } catch (e) { /* never let error logging cascade */ }
+    // Emit a visible warning so Claude Code surfaces the failure in context
+    process.stdout.write("[Model Router - ERROR] analyze-complexity.js caught an exception. See logs/hook-errors.jsonl or run /health for details.\n");
     process.exit(0);
   }
 });

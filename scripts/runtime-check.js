@@ -60,6 +60,13 @@ try {
   process.stdout.write(lines.join("\n"));
   process.exit(0);
 } catch (err) {
-  // Never break session start
+  // T2.4 (v2.5.0): log runtime-check failures; never break session start
+  try {
+    require("./lib/error-log").logHookError({
+      script: "runtime-check.js",
+      phase: "main",
+      error: err
+    });
+  } catch (e) { /* never cascade */ }
   process.exit(0);
 }
