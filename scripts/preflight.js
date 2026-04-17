@@ -33,6 +33,14 @@ var QUIET   = args.indexOf("--quiet")   !== -1;
 var JSON_OUT= args.indexOf("--json")    !== -1;
 var RUNTIME = args.indexOf("--runtime") !== -1;
 
+// Detect CI environment. In CI we validate the source tree's integrity, but
+// skip checks that require an actual Claude Code installation on the runner
+// (~/.claude directory, `claude` CLI on PATH, hook dry-run that needs them).
+var CI = (process.env.CI === "true") ||
+         (process.env.GITHUB_ACTIONS === "true") ||
+         (process.env.RUNNER_OS !== undefined) ||
+         (args.indexOf("--ci") !== -1);
+
 var results = [];
 
 function add(name, ok, detail, fatal) {
@@ -132,8 +140,15 @@ function checkClaudeCli() {
 }
 
 function checkClaudeHomeDir() {
-  // The plugin installs into ~/.claude/plugins/cache/neon-local/<plugin>/<version>/
+  // The plugin installs into ~/.claude/plugins/cache/<owner>/<plugin>/<version>/
   // The ~/.claude directory must exist (it's created by Claude Code on first run).
+  // In CI this is skipped because the runner doesn't have Claude Code installed -
+  // CI's job is to validate the SOURCE TREE, not to fully install the plugin.
+  if (CI) {
+    add("Central .claude directory", true,
+      "skipped in CI (no local Claude Code install on runner)", false);
+    return;
+  }
   var home = process.env.HOME || process.env.USERPROFILE;
   if (!home) {
     add("Central .claude directory", false,
