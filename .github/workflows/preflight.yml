@@ -24,6 +24,9 @@ jobs:
       - name: Run preflight (10 checks)
         run: node scripts/preflight.js
 
+      - name: Unit tests (scoring library)
+        run: node tests/run-all.js
+
       - name: Behavioral test - typo task should route to haiku
         run: |
           OUT=$(echo '{"prompt":"fix typo in README"}' | node scripts/analyze-complexity.js)
