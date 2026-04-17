@@ -85,15 +85,49 @@ jobs:
 
       - name: Verify bundle is reproducible (dist/install.js sync)
         run: |
+          echo "=== Pre-build: committed dist/install.js ==="
+          ls -l dist/install.js
+          md5sum dist/install.js
+          echo
+          echo "=== Building install.js fresh ==="
           node scripts/build-installer.js
-          if ! diff -q dist/install.js install.js >/dev/null 2>&1; then
-            echo "ERROR: dist/install.js is out of sync with the source tree"
-            echo "After your changes, run:"
+          echo
+          echo "=== Post-build: generated install.js ==="
+          ls -l install.js
+          md5sum install.js
+          echo
+          echo "=== Diff size and content ==="
+          if [ "$(stat -c%s install.js)" != "$(stat -c%s dist/install.js)" ]; then
+            echo "SIZE DIFFERS: generated $(stat -c%s install.js) vs committed $(stat -c%s dist/install.js)"
+          fi
+          if ! cmp -s install.js dist/install.js; then
+            echo ""
+            echo "BYTES DIFFER. First 20 differing positions:"
+            cmp -l install.js dist/install.js 2>&1 | head -20 || true
+            echo ""
+            echo "Files that the bundler embedded (first 30, sorted):"
+            node -e "
+              var FILES = require('./install.js'.replace(/^/, './'));
+            " 2>/dev/null || true
+            node -e "
+              // Re-run collectFiles to introspect
+              var fs=require('fs'), path=require('path');
+              var content=fs.readFileSync('./install.js','utf8');
+              var m=content.match(/var FILES = (\[.*?\]);/);
+              if(!m){console.log('Could not parse FILES array');process.exit(0);}
+              var files=JSON.parse(m[1]);
+              console.log('Embedded:', files.length, 'files');
+              files.sort(function(a,b){return a.path.localeCompare(b.path);}).slice(0,30).forEach(function(f){
+                var crypto=require('crypto');
+                var hash=crypto.createHash('md5').update(f.content).digest('hex').substring(0,8);
+                console.log('  ' + hash + '  ' + f.size + 'B  ' + f.path);
+              });
+            "
+            echo ""
+            echo "=== HOW TO FIX (if you changed source): ==="
             echo "  node scripts/build-installer.js"
             echo "  cp install.js dist/install.js"
-            echo ""
-            echo "First differences:"
-            diff <(head -20 dist/install.js) <(head -20 install.js) || true
+            echo "  git add install.js dist/install.js && git commit"
             exit 1
           fi
           echo "Bundle is in sync with source"
