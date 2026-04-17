@@ -160,7 +160,23 @@ function analyzeComplexity(prompt, config, cwd, sessionId) {
   contextBoostWeight = Math.max(0, Math.min(0.5, contextBoostWeight));
   var targetSubScoreSum = 1.0 - contextBoostWeight;
   var weightSum = (weights.keyword || 0) + (weights.wordCount || 0) + (weights.codeBlocks || 0) + (weights.multiFile || 0) + (weights.structure || 0);
-  var wNorm = (weightSum > 0 && Math.abs(weightSum - targetSubScoreSum) > 0.01) ? targetSubScoreSum / weightSum : 1.0;
+  // T1.3 (v2.4.1): weights semantically sum to 1.0 across ALL signals including
+  // contextBoost. Accept 1.0-sum weights AND weights-pre-sum-to-target (0.9).
+  // Only normalize if the user wrote a non-standard sum (e.g., 1.5 or 0.7).
+  // Previously this silently scaled 1.0-sum weights by 0.9, reducing the
+  // effective impact of deterministic signals.
+  var wNorm = 1.0;
+  if (weightSum > 0) {
+    // If sum is near 1.0 OR near target (0.9), accept as-is; the contextBoost
+    // is purely additive and the slight over-count (10% when weights sum to 1.0)
+    // is preferable to silently scaling every sub-score.
+    var nearOne = Math.abs(weightSum - 1.0) < 0.01;
+    var nearTarget = Math.abs(weightSum - targetSubScoreSum) < 0.01;
+    if (!nearOne && !nearTarget) {
+      // User wrote a custom sum - normalize to the target to preserve intent.
+      wNorm = targetSubScoreSum / weightSum;
+    }
+  }
 
   var rawScore = 0;
   rawScore += wordScore * (weights.wordCount || 0.15) * wNorm;
@@ -264,6 +280,20 @@ process.stdin.on("data", function(chunk) { input += chunk; });
 process.stdin.on("end", function() {
   try {
     var data = JSON.parse(input);
+
+    // T1.2 (v2.4.1): defensive stdin validation. Previously `data.prompt`
+    // silently defaulted to "" if the JSON structure was wrong, hiding
+    // malformed hook inputs. Now we exit cleanly and log to stderr so
+    // the failure is visible in logs/hook-debug.log.
+    if (typeof data !== "object" || data === null) {
+      process.stderr.write("[Model Router] Invalid hook input: expected JSON object, got " + typeof data + "\n");
+      process.exit(0);
+    }
+    if (data.prompt !== undefined && typeof data.prompt !== "string") {
+      process.stderr.write("[Model Router] Invalid hook input: data.prompt must be string, got " + typeof data.prompt + "\n");
+      process.exit(0);
+    }
+
     var prompt = data.prompt || "";
     var cwd = data.cwd || process.cwd();
     var sessionId = data.session_id || "unknown";

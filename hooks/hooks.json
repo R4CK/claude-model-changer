@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "_R=\"${CLAUDE_PLUGIN_ROOT}\"; [ -z \"$_R\" ] && _R=\"$HOME/.claude/plugins/cache/neon-local/claude-model-changer/2.0.0\"; node \"$_R/scripts/runtime-check.js\"",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/runtime-check.js\"",
             "timeout": 10
           }
         ]
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "_R=\"${CLAUDE_PLUGIN_ROOT}\"; [ -z \"$_R\" ] && _R=\"$HOME/.claude/plugins/cache/neon-local/claude-model-changer/2.0.0\"; node \"$_R/scripts/analyze-complexity.js\"",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/analyze-complexity.js\"",
             "timeout": 60
           }
         ]
@@ -28,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "_R=\"${CLAUDE_PLUGIN_ROOT}\"; [ -z \"$_R\" ] && _R=\"$HOME/.claude/plugins/cache/neon-local/claude-model-changer/2.0.0\"; node \"$_R/scripts/enforce-stats.js\"",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/enforce-stats.js\"",
             "timeout": 30
           }
         ]
@@ -39,7 +39,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "_R=\"${CLAUDE_PLUGIN_ROOT}\"; [ -z \"$_R\" ] && _R=\"$HOME/.claude/plugins/cache/neon-local/claude-model-changer/2.0.0\"; node \"$_R/scripts/detect-fallback.js\"",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/detect-fallback.js\"",
             "timeout": 15
           }
         ]
