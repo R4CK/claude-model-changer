@@ -47,6 +47,7 @@ function getPatternsPath() { return path.join(BASE_DIR, "config", "patterns.json
 function getStatusPath() { return path.join(BASE_DIR, "logs", "status.json"); }
 function getBenchmarkLogPath() { return path.join(BASE_DIR, "logs", "benchmarks.jsonl"); }
 function getConfigPath() { return path.join(BASE_DIR, "config", "task-routing.json"); }
+function getLearnedConfigPath() { return path.join(BASE_DIR, "logs", "learned-keywords.json"); }
 
 function ensureLogDir() {
   var logDir = path.join(BASE_DIR, "logs");
@@ -162,6 +163,7 @@ module.exports = {
   getStatusPath: getStatusPath,
   getBenchmarkLogPath: getBenchmarkLogPath,
   getConfigPath: getConfigPath,
+  getLearnedConfigPath: getLearnedConfigPath,
   ensureLogDir: ensureLogDir,
   logUsage: logUsage,
   logOverride: logOverride,
