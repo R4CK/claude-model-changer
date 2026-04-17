@@ -1,5 +1,61 @@
 # Changelog
 
+## v2.5.0 (first of two PRs: tests + explain)
+
+### New feature: `/complexity --explain` mode (T2.1)
+
+Prefix the prompt with `--explain` to get a full ROUTING EXPLANATION block
+in the analyzer output:
+
+```bash
+echo '{"prompt":"--explain refactor auth module"}' | node scripts/analyze-complexity.js
+```
+
+The explain block shows:
+- Input parameters (word count, detected language, task type)
+- Every sub-score (keyword, wordCount, codeBlocks, multiFile, structure,
+  contextBoost) with its configured weight and applied normalization factor
+- Which keyword matched (category + matched text + length)
+- Keyword-influence mode (override / boost / none)
+- `rawScore` -> `finalScore` transformation
+- Final model and level
+- Confidence breakdown (signals + agreement)
+- Whether adaptive weights or session stickiness took effect
+
+Use cases:
+- Debugging "why did this prompt route to opus?" without diving into the code
+- Tuning `config/task-routing.json` based on observed keyword matches
+- Verifying custom weight configurations behave as expected
+
+The `/complexity` slash command docstring was updated to explain this flag.
+
+### New: Zero-dependency unit test suite (T2.2)
+
+Added `tests/` with a minimal zero-dep test harness (`tests/harness.js`,
+`tests/run-all.js`) and **44 unit tests for `scripts/lib/scoring.js`**
+covering:
+- `scoreWordCount` - 5 cases (boundaries + huge prompt)
+- `scoreCodeBlocks` - 4 cases (none / 1 / 2 / many pairs)
+- `scoreMultiFileIndicators` - 4 cases (0 / 1 / 2 / 3+ indicators)
+- `scoreStructuralComplexity` - 4 cases (empty / numbered / file paths / capped)
+- `detectLanguage` - 4 cases (en / hu / de / mixed)
+- `classifyQuestionVsTask` - 3 cases
+- `detectManualOverride` - 4 cases (@haiku, @opus, "use sonnet", none)
+- `scoreKeywords` / `scoreKeywordsMultiLang` - 8 cases (incl. specificity tie-break, multi-lang, case-contract)
+- `calculateConfidence` - 3 cases
+- `detectBorderline` - 3 cases
+- `getCostEstimate` - 2 cases
+
+CI integration: new `Unit tests (scoring library)` step in
+`.github/workflows/preflight.yml` runs `node tests/run-all.js`. Tests use
+only Node's built-in `assert` module - no Jest/Mocha dependency.
+
+### Internals exposed (needed for --explain)
+`analyzeComplexity()` now returns a richer object with `result.explain.*`
+fields (wordCount, weights, wNorm, contextBoostWeight, keywordResult,
+keywordInfluenceMode, usingAdaptiveWeights). Backward compatible -
+existing callers that read `result.model`/`score`/`confidence` are unaffected.
+
 ## v2.4.1
 
 ### Audit fixes (no behavior changes beyond fixing bugs)

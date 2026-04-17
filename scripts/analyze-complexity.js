@@ -268,7 +268,17 @@ function analyzeComplexity(prompt, config, cwd, sessionId) {
     projectTypes: projectTypes, contextBoost: contextBoost,
     stickiness: stickiness, confidence: confidence,
     patternMatch: null, detectedLanguage: detectedLanguage, scores: subScores,
-    historyBoost: historyBoost
+    historyBoost: historyBoost,
+    // T2.1 (v2.5.0): detailed internals exposed for --explain mode
+    explain: {
+      wordCount: wordCount, taskType: taskType,
+      keywordResult: keywordResult,
+      weights: weights, weightSum: weightSum, wNorm: wNorm,
+      contextBoostWeight: contextBoostWeight,
+      questionReductionApplied: (taskType === "question" && rawScore / (questionReduction || 0.8) > 3),
+      keywordInfluenceMode: typeof keywordInfluence !== "undefined" ? keywordInfluence : "none",
+      usingAdaptiveWeights: usingAdaptive
+    }
   };
 }
 
@@ -447,6 +457,13 @@ process.stdin.on("end", function() {
     // ---- Dry run mode (A6) ----
     var isDryRun = false;
     if (prompt.trim().startsWith("--dry-run ")) { isDryRun = true; prompt = prompt.trim().substring("--dry-run ".length); }
+
+    // ---- T2.1 (v2.5.0): --explain mode ----
+    // Adds a structured "ROUTING EXPLANATION" block at the end of the output
+    // showing exactly how the score was computed. Useful for /complexity and
+    // for debugging misrouted prompts.
+    var isExplain = false;
+    if (prompt.trim().startsWith("--explain ")) { isExplain = true; prompt = prompt.trim().substring("--explain ".length); }
 
     // ---- Main analysis ----
     var config = configModule.loadConfig(cwd);
@@ -634,6 +651,50 @@ process.stdin.on("end", function() {
     var preflight = scoring.preflightCheck(prompt, result.score, result.model, config);
     if (!preflight.ready) {
       lines.push("PREFLIGHT: Opus task detected. Consider adding: " + preflight.suggestions.join("; "));
+    }
+
+    // T2.1 (v2.5.0): --explain mode shows full scoring breakdown
+    if (isExplain && result.explain) {
+      var ex = result.explain;
+      lines.push("");
+      lines.push("=== ROUTING EXPLANATION ===");
+      lines.push("Inputs:");
+      lines.push("  wordCount: " + ex.wordCount + " words");
+      lines.push("  taskType: " + ex.taskType + (ex.questionReductionApplied ? " (question-reduction applied)" : ""));
+      lines.push("  detectedLanguage: " + result.detectedLanguage);
+      lines.push("");
+      lines.push("Sub-scores (weighted contribution to rawScore):");
+      var ws = ex.weights || {};
+      lines.push("  keyword:   " + (result.scores.keyword || 0) + "  x weight " + (ws.keyword || 0.35).toFixed(2) + " x wNorm " + ex.wNorm.toFixed(2));
+      lines.push("  wordCount: " + (result.scores.wordCount || 0) + "  x weight " + (ws.wordCount || 0.15).toFixed(2));
+      lines.push("  codeBlocks:" + (result.scores.codeBlocks || 0) + "  x weight " + (ws.codeBlocks || 0.10).toFixed(2));
+      lines.push("  multiFile: " + (result.scores.multiFile || 0) + "  x weight " + (ws.multiFile || 0.20).toFixed(2));
+      lines.push("  structure: " + (result.scores.structure || 0) + "  x weight " + (ws.structure || 0.20).toFixed(2));
+      if (result.contextBoost > 0) {
+        lines.push("  contextBoost: +" + result.contextBoost + " x weight " + ex.contextBoostWeight.toFixed(2));
+      }
+      lines.push("");
+      lines.push("Keyword match:");
+      if (ex.keywordResult && ex.keywordResult.matchedModel !== "none") {
+        lines.push("  category: " + ex.keywordResult.matchedCategory + " (" + ex.keywordResult.matchedModel + ")");
+        lines.push("  matched keyword: \"" + (ex.keywordResult.matchedKeyword || "?") + "\"" +
+                   (ex.keywordResult.length ? " (" + ex.keywordResult.length + " chars)" : ""));
+        lines.push("  keyword-influence mode: " + ex.keywordInfluenceMode);
+      } else {
+        lines.push("  NO MATCH (prompt did not hit any configured keyword)");
+      }
+      lines.push("");
+      lines.push("Totals:");
+      lines.push("  rawScore: " + result.rawScore + " -> clamped to [1,10] -> finalScore: " + result.score);
+      lines.push("  final model: " + result.model + " (" + result.level + ")");
+      lines.push("  confidence: " + result.confidence.confidence + "% (" + result.confidence.signals + " active signals, " + result.confidence.agreement + " agreement)");
+      if (ex.usingAdaptiveWeights) {
+        lines.push("  adaptive weights: ACTIVE (scoring weights auto-tuned from /rate history)");
+      }
+      if (result.stickiness && result.stickiness.sticky) {
+        lines.push("  stickiness: pinned to " + result.stickiness.stickyModel + " (" + result.stickiness.reason + ")");
+      }
+      lines.push("===========================");
     }
 
     // GSD-inspired: Task splitting recommendation
