@@ -32,7 +32,6 @@ var session = require("./lib/session");
 var sessionUtils = require("./session-utils");
 var health = require("./lib/health");
 var autoTune = require("./lib/auto-tune");
-var llmClassifier = require("./lib/llm-classifier");
 var learnLog = require("./lib/learn-log");
 
 // Startup cleanup: rotate debug log + trim all JSONL logs
@@ -357,6 +356,23 @@ process.stdin.on("end", function() {
       io.logFallback({ timestamp: new Date().toISOString(), fromModel: fallbackMatch[1], toModel: fallbackMatch[2], reason: fallbackMatch[3] });
       process.stdout.write("Fallback logged."); process.exit(0);
     }
+    // --log-llm-suggestion <model> <category> <kw1,kw2,kw3> <originalPrompt>
+    // Called by Claude after the haiku-worker subagent classifies a low-confidence prompt.
+    var llmSuggestionMatch = prompt.trim().match(/^--log-llm-suggestion\s+(haiku|sonnet|opus)\s+([^\s]+)\s+([^\s]+)\s+(.+)$/);
+    if (llmSuggestionMatch) {
+      var keywords = llmSuggestionMatch[3].split(",").map(function(k) { return k.trim(); }).filter(function(k) { return k.length > 0; });
+      learnLog.appendSuggestion({
+        prompt: llmSuggestionMatch[4],
+        suggestedCategory: llmSuggestionMatch[2].replace(/_/g, " "),
+        suggestedKeywords: keywords,
+        suggestedModel: llmSuggestionMatch[1],
+        llmModel: "haiku-worker (subagent)",
+        llmConfidence: null,
+        latencyMs: null
+      });
+      process.stdout.write("LLM suggestion logged.");
+      process.exit(0);
+    }
 
     // ---- Dry run mode (A6) ----
     var isDryRun = false;
@@ -383,43 +399,26 @@ process.stdin.on("end", function() {
     var anomalies = monitors.detectAnomalies(config);
     var qualityWarning = stats.getQualityWarning(result.model, result.matchedCategory);
 
-    // ---- LLM fallback (v2.4.0) ----
+    // ---- LLM fallback hint (v2.4.0) ----
     // When the deterministic scorer is uncertain (low confidence or no
-    // keyword match), optionally call Claude Haiku to classify the prompt
-    // and learn what keywords future prompts of this type might contain.
-    // Opt-in via config.autoMode.llmFallback.enabled. Requires
-    // ANTHROPIC_API_KEY env. Always degrades gracefully.
-    var llmFallbackUsed = false;
+    // keyword match), suggest that Claude classify with the existing
+    // haiku-worker subagent and route accordingly. The hook itself does
+    // NOT make any API calls or external network requests - Claude
+    // handles the classification using its built-in subagent infrastructure
+    // (Haiku is already accessible via the haiku-worker agent that this
+    // plugin ships).
+    //
+    // After Claude gets the haiku-worker classification, it can log the
+    // result back via the --log-llm-suggestion special command so /learn
+    // can later show keyword suggestions.
+    var llmFallbackHinted = false;
     var llmConfig = config && config.autoMode && config.autoMode.llmFallback;
     var deterministicLowConfidence = (result.confidence.confidence < 40) ||
                                      (result.matchedCategory === "none");
     if (!isDryRun && llmConfig && llmConfig.enabled && deterministicLowConfidence && !result.override) {
-      try {
-        var llmResult = llmClassifier.classify(prompt, llmConfig);
-        if (llmResult && llmResult.model) {
-          // LLM result overrides deterministic
-          result.model = llmResult.model;
-          result.matchedCategory = "[LLM] " + llmResult.category;
-          result.confidence.confidence = Math.max(result.confidence.confidence, llmResult.confidence || 75);
-          result.level = { haiku: "SIMPLE", sonnet: "MEDIUM", opus: "COMPLEX" }[llmResult.model];
-          llmFallbackUsed = true;
-          // Log the suggestion for future config updates via /learn
-          learnLog.appendSuggestion({
-            prompt: prompt,
-            suggestedCategory: llmResult.category,
-            suggestedKeywords: llmResult.suggestedKeywords,
-            suggestedModel: llmResult.model,
-            llmConfidence: llmResult.confidence,
-            llmModel: llmResult.modelUsed,
-            latencyMs: llmResult.latencyMs
-          });
-        }
-      } catch (e) {
-        // Never break the hook because of LLM call. Fall through to
-        // deterministic decision.
-      }
+      llmFallbackHinted = true;
     }
-    result.llmFallbackUsed = llmFallbackUsed;
+    result.llmFallbackHinted = llmFallbackHinted;
 
     if (result.confidence.confidence < 40) result.autoRoute = false;
     if (safeMode) result.autoRoute = false;
@@ -507,6 +506,30 @@ process.stdin.on("end", function() {
     if (anomalies && anomalies.length > 0) anomalies.forEach(function(a) { lines.push(a.message); });
     if (safeMode) lines.push("SAFE MODE: All routing requires confirmation.");
     if (qualityWarning) lines.push("QUALITY WARNING: " + qualityWarning.model + "+" + qualityWarning.category + " avg " + qualityWarning.avg + "/5 (" + qualityWarning.count + " ratings). " + qualityWarning.action);
+
+    // ---- LLM fallback hint (v2.4.0) ----
+    // Tell Claude to use the haiku-worker subagent (already shipped with this
+    // plugin) to classify the prompt, then route accordingly. No API call,
+    // no API key, no extra cost beyond the user's existing Haiku subagent
+    // usage. After classifying, Claude logs the suggestion via the
+    // --log-llm-suggestion special command so /learn can review it.
+    if (llmFallbackHinted) {
+      var safePrompt = prompt.replace(/"/g, '\\"').replace(/\n/g, " ").substring(0, 500);
+      lines.push("");
+      lines.push("LLM-FALLBACK SUGGESTED: Confidence is low (" + result.confidence.confidence + "%) and no keyword matched.");
+      lines.push("INSTRUCTION TO CLAUDE: Before routing, use the Agent tool with subagent_type=\"haiku-worker\" to classify this prompt:");
+      lines.push("");
+      lines.push("  Task description: \"Classify task complexity\"");
+      lines.push("  Task prompt: |");
+      lines.push("    Classify the complexity of this user prompt. Respond with ONLY a JSON object:");
+      lines.push("    { \"model\": \"haiku\"|\"sonnet\"|\"opus\", \"category\": \"<2-4 word label>\", \"keywords\": [\"kw1\",\"kw2\",\"kw3\"], \"confidence\": <0-100> }");
+      lines.push("    Routing rules: haiku=trivial (typos, formatting, single-line), sonnet=medium (bug fixes, features, refactors, tests), opus=complex (architecture, security, multi-file, performance).");
+      lines.push("    User prompt: \"" + safePrompt + "\"");
+      lines.push("");
+      lines.push("Then: (a) route the user's actual task to the model haiku-worker chose, (b) log the suggestion via:");
+      lines.push("  echo '{\"prompt\":\"--log-llm-suggestion <model> <category-with-underscores> <kw1,kw2,kw3> <original-prompt>\"}' | node \"${CLAUDE_PLUGIN_ROOT}/scripts/analyze-complexity.js\"");
+      lines.push("");
+    }
 
     // GSD-inspired: Goal-backward verification (auto-tune suggestions)
     if (!result.override && config && (!config.goalVerification || config.goalVerification.enabled !== false)) {

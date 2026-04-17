@@ -209,10 +209,7 @@ This forces opus for critical-path keywords *only in this project*, and disables
   },
   "borderlineZones": [3, 4, 7, 8],
   "llmFallback": {
-    "enabled": false,
-    "model": "claude-haiku-4-5",
-    "timeoutMs": 8000,
-    "maxTokens": 200
+    "enabled": false
   }
 }
 ```
@@ -224,23 +221,26 @@ This forces opus for critical-path keywords *only in this project*, and disables
 ### LLM-fallback classifier (opt-in, v2.4.0+)
 
 When the deterministic scorer can't classify a prompt confidently
-(`confidence < 40` or no keyword match), the plugin can optionally fall back
-to **Claude Haiku** for a semantic classification. The result both overrides
-the deterministic decision AND is logged to `logs/learn-suggestions.jsonl` so
-you can grow your keyword config over time via `/learn`.
+(`confidence < 40` or no keyword match), the hook outputs a structured
+**instruction to Claude** to use the existing **`haiku-worker` subagent**
+(shipped with this plugin) to classify the prompt before routing.
+
+**The hook itself makes no API call.** It just emits a text instruction.
+Claude reads it, uses its built-in `Task` tool with `subagent_type="haiku-worker"`
+to classify, then routes the user's actual task to the chosen model. The
+classification result is also logged via the `--log-llm-suggestion`
+special command, so you can later review keyword candidates via `/learn`.
 
 **To enable:**
-1. Set `ANTHROPIC_API_KEY` (or `CLAUDE_API_KEY`) in your environment
-2. In `config/task-routing.json`, set `autoMode.llmFallback.enabled = true`
-3. Restart Claude Code
+1. In `config/task-routing.json`, set `autoMode.llmFallback.enabled = true`
+2. Restart Claude Code
 
-**Cost:** ~$0.0002 per fallback (Haiku is cheap). 100 unmatched prompts/day
-≈ $0.02/day per user. The fast deterministic path covers ~90%+ of prompts at
-zero cost.
+**Cost:** zero extra — the Haiku usage counts against your normal Claude
+Code subagent usage, not against a separate API key. No billing surprises.
 
-**Failure modes:** missing API key, network error, timeout, or malformed
-response → silently falls back to the deterministic decision. The hook never
-breaks because of LLM issues.
+**Failure modes:** zero. The hook only suggests; Claude only acts if it
+receives the suggestion. There's no network call, no timeout, no auth flow
+to break.
 
 ---
 

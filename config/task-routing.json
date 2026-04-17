@@ -412,10 +412,7 @@
     },
     "llmFallback": {
       "enabled": false,
-      "model": "claude-haiku-4-5",
-      "timeoutMs": 8000,
-      "maxTokens": 200,
-      "_comment": "Opt-in LLM fallback. When the deterministic scorer's confidence is < 40 OR no keyword matches, calls Claude Haiku to classify the prompt and logs the suggestion for /learn review. Requires ANTHROPIC_API_KEY env. Cost: ~$0.0002 per fallback. Set enabled: true to activate."
+      "_comment": "Opt-in LLM fallback. When the deterministic scorer's confidence is < 40 OR no keyword matches, the hook outputs a hint instructing Claude to classify the prompt with the haiku-worker subagent (already shipped with this plugin). No API key required - uses the existing Claude Code session. Set enabled: true to activate."
     },
     "borderlineZones": [
       3,

@@ -2,38 +2,44 @@
 
 ## v2.4.0
 
-### New feature: LLM-fallback classification (opt-in)
+### New feature: LLM-fallback classification via the haiku-worker subagent (opt-in)
 
 When the deterministic scorer cannot classify a prompt confidently
-(`confidence < 40` OR no keyword match), the plugin can now optionally fall
-back to **Claude Haiku** for a semantic classification. The result both
-overrides the deterministic decision AND is logged to
-`logs/learn-suggestions.jsonl` so the user can review and grow their keyword
-config over time.
+(`confidence < 40` OR no keyword match), the hook now outputs a structured
+**instruction to Claude** to use the existing **`haiku-worker` subagent**
+(shipped with this plugin) to classify the prompt before routing.
 
-**Architecture:** hybrid. The fast deterministic scorer remains the primary
-path (covers ~90%+ of prompts at zero cost). The LLM is only invoked for the
-hard cases.
+**Architecture: hook-driven, Claude-executed.** The hook itself does NOT
+make any network calls or use any API keys. It outputs a text instruction
+that Claude reads and acts on, using the same `Task`-tool / subagent
+infrastructure the plugin already uses for routing. After Claude gets the
+classification from haiku-worker, it (a) routes the user's actual task to
+the model haiku-worker chose, and (b) logs the classification back via the
+new `--log-llm-suggestion` special command.
 
-**Cost:** ~$0.0002 per fallback (Haiku). 100 unmatched prompts/day ≈ $0.02/day
-per user.
+**Cost:** zero extra. The Haiku usage counts against the user's normal
+Claude Code subagent usage - no separate API key, no separate billing.
 
 **Opt-in:** disabled by default. To enable:
-1. Set `ANTHROPIC_API_KEY` (or `CLAUDE_API_KEY`) in your environment
-2. In `config/task-routing.json`, set `autoMode.llmFallback.enabled = true`
-3. Restart Claude Code
+1. In `config/task-routing.json`, set `autoMode.llmFallback.enabled = true`
+2. Restart Claude Code
 
 **Files added:**
-- `scripts/lib/llm-classifier.js` - Haiku API caller with sync wrapper
-- `scripts/lib/llm-classifier-helper.js` - sync child process for the HTTPS request
 - `scripts/lib/learn-log.js` - append-only log of LLM suggestions
 - `scripts/show-learn-suggestions.js` - backing script for the new `/learn` slash command
 - `commands/learn.md` - the `/learn` command definition
 
+**Modified:**
+- `scripts/analyze-complexity.js` - emits an "LLM-FALLBACK SUGGESTED" hint
+  in the hook output when deterministic confidence is low AND llmFallback
+  is enabled. Also handles the new `--log-llm-suggestion` special command.
+- `config/task-routing.json` - new `autoMode.llmFallback` config block
+  (just `{ enabled: false, _comment: "..." }`).
+
 **Behavior:**
-- Hook always degrades gracefully: missing API key, network error, timeout,
-  malformed response → silently falls back to the deterministic decision
-- LLM call has an 8-second timeout (configurable via `llmFallback.timeoutMs`)
+- Hook stays completely synchronous and zero-network
+- All real LLM work is done by Claude in-context using Task tool with
+  subagent_type="haiku-worker"
 - Suggestions log auto-trims to 500 entries; `/learn` shows top categories,
   top keywords, and the recent 10 entries
 
