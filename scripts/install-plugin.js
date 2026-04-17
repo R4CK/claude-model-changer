@@ -157,7 +157,7 @@ function main() {
   });
 
   // Copy individual files
-  ["README.md", "LICENSE", "CHANGELOG.md", "CLAUDE.md"].forEach(function(file) {
+  ["README.md", "LICENSE", "CHANGELOG.md", "CLAUDE.md", "package.json"].forEach(function(file) {
     var src = path.join(projectRoot, file);
     var dest = path.join(cacheDir, file);
     if (fs.existsSync(src)) {
