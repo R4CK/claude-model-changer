@@ -56,7 +56,11 @@ function readFileForBundle(filePath) {
 function collectFiles(dir, base) {
   var results = [];
   if (!fs.existsSync(dir)) return results;
-  var entries = fs.readdirSync(dir);
+  // IMPORTANT: explicit sort. fs.readdirSync's order is OS-dependent
+  // (Windows: alphabetical; Linux: directory-insertion). Without sort, the
+  // bundle's embedded file order differs across platforms and the
+  // reproducibility check fails.
+  var entries = fs.readdirSync(dir).sort();
   for (var i = 0; i < entries.length; i++) {
     var fullPath = path.join(dir, entries[i]);
     var relPath = path.join(base, entries[i]).replace(/\\/g, "/");
