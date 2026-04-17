@@ -22,7 +22,9 @@ function getSessionPath(sessionId) {
     return sessionUtils.SESSION_PATH;
   }
   var shortId = sessionId.replace(/[^a-zA-Z0-9-]/g, "").substring(0, 12);
-  return sessionUtils.SESSION_PATH.replace("session-state.json", "session-state-" + shortId + ".json");
+  // Build path structurally rather than via string-replace on the full path,
+  // which would fail if the parent directory ever contained "session-state.json".
+  return path.join(path.dirname(sessionUtils.SESSION_PATH), "session-state-" + shortId + ".json");
 }
 
 function loadSessionState(sessionId) {
@@ -31,7 +33,9 @@ function loadSessionState(sessionId) {
     if (sessionPath !== sessionUtils.SESSION_PATH && fs.existsSync(sessionPath)) {
       return JSON.parse(fs.readFileSync(sessionPath, "utf8").replace(/^\uFEFF/, ""));
     }
-  } catch (err) {}
+  } catch (err) {
+    process.stderr.write("[session] Corrupt session state at " + sessionPath + ": " + err.message + "\n");
+  }
   return sessionUtils.loadSessionState();
 }
 
@@ -47,6 +51,7 @@ function saveSessionState(state) {
       fs.writeFileSync(tmpPath, JSON.stringify(state));
       fs.renameSync(tmpPath, sessionPath);
     } catch (err) {
+      process.stderr.write("[session] Failed to write session-specific state at " + sessionPath + ": " + err.message + "\n");
       try { fs.unlinkSync(sessionPath + "." + process.pid + ".tmp"); } catch (e) {}
     }
   }
@@ -63,10 +68,21 @@ function extractTopicWords(prompt) {
 
 function calculateTopicSimilarity(words1, words2) {
   if (!words1 || !words2 || words1.length === 0 || words2.length === 0) return 0;
+  // True Jaccard: both sides must be unique sets, otherwise duplicate tokens
+  // in one list inflate the overlap count above the union size (>1.0).
   var set1 = {};
+  var set2 = {};
   words1.forEach(function(w) { set1[w] = true; });
-  var overlap = words2.filter(function(w) { return set1[w]; }).length;
-  var union = new Set(words1.concat(words2)).size;
+  words2.forEach(function(w) { set2[w] = true; });
+  var overlap = 0;
+  var union = 0;
+  var seen = {};
+  Object.keys(set1).forEach(function(w) {
+    seen[w] = true;
+    union++;
+    if (set2[w]) overlap++;
+  });
+  Object.keys(set2).forEach(function(w) { if (!seen[w]) union++; });
   return union > 0 ? overlap / union : 0;
 }
 
@@ -88,9 +104,9 @@ function getSessionStickiness(prompt, sessionId, lastModel, config) {
 // Track last 3 prompts; if current prompt is related, inherit context boost
 
 function getPromptHistoryBoost(prompt, sessionId, config) {
-  if (!config || !config.promptHistory || config.promptHistory.enabled === false) {
-    // Default enabled if not explicitly disabled
-    if (config && config.promptHistory && config.promptHistory.enabled === false) return { boost: 0 };
+  // Prompt history is enabled by default; only skip when explicitly disabled.
+  if (config && config.promptHistory && config.promptHistory.enabled === false) {
+    return { boost: 0 };
   }
   try {
     var state = loadSessionState(sessionId);

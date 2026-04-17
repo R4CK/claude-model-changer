@@ -12,6 +12,7 @@
 
 var fs = require("fs");
 var path = require("path");
+var sleep = require("./lib/sleep");
 
 var LOGS_DIR = path.join(__dirname, "..", "logs");
 var FALLBACK_LOG = path.join(LOGS_DIR, "fallbacks.jsonl");
@@ -57,26 +58,47 @@ process.stdin.on("end", function() {
 
         var lockStart = Date.now();
         while (Date.now() - lockStart < 3000) {
-          try { fs.writeFileSync(LOCK_PATH, String(process.pid), { flag: "wx" }); locked = true; break; }
-          catch (e) {
-            try {
-              var ls = fs.statSync(LOCK_PATH);
-              if (Date.now() - ls.mtimeMs > 10000) {
-                // Check if owning PID is alive before removing stale lock
-                try {
-                  var lockPid = parseInt(fs.readFileSync(LOCK_PATH, "utf8"), 10);
-                  if (lockPid && !isNaN(lockPid)) { try { process.kill(lockPid, 0); } catch(x) { try { fs.unlinkSync(LOCK_PATH); } catch(x2){} } }
-                  else { try { fs.unlinkSync(LOCK_PATH); } catch(x2){} }
-                } catch(x) { try { fs.unlinkSync(LOCK_PATH); } catch(x2){} }
-                continue;
+          try {
+            fs.writeFileSync(LOCK_PATH, String(process.pid), { flag: "wx" });
+            locked = true;
+            break;
+          } catch (e) {
+            var ls;
+            try { ls = fs.statSync(LOCK_PATH); }
+            catch (x) { sleep.sleepSync(50); continue; }
+
+            if (Date.now() - ls.mtimeMs > 10000) {
+              // Stale lock: only force-remove if owning PID is verifiably dead
+              // or the PID is unparseable (no one to defer to).
+              // If the lockfile is transiently unreadable, wait another cycle
+              // instead of force-removing (prevents racing with the real owner).
+              var pidDead = false;
+              var pidKnown = false;
+              try {
+                var raw = fs.readFileSync(LOCK_PATH, "utf8");
+                var lockPid = parseInt(raw, 10);
+                if (lockPid && !isNaN(lockPid)) {
+                  pidKnown = true;
+                  try { process.kill(lockPid, 0); } catch (x) { pidDead = true; }
+                }
+              } catch (x) { /* unreadable: wait, do not force-remove */ }
+              if (pidDead || !pidKnown) {
+                try { fs.unlinkSync(LOCK_PATH); } catch (x2) {}
               }
-            } catch(x) { continue; }
-            var w = Date.now() + 50; while (Date.now() < w) {}
+              continue;
+            }
+            sleep.sleepSync(50);
           }
         }
 
         var state = {};
-        try { if (fs.existsSync(SESSION_PATH)) state = JSON.parse(fs.readFileSync(SESSION_PATH, "utf8").replace(/^\uFEFF/, "")); } catch(e) {}
+        try {
+          if (fs.existsSync(SESSION_PATH)) {
+            state = JSON.parse(fs.readFileSync(SESSION_PATH, "utf8").replace(/^\uFEFF/, ""));
+          }
+        } catch (e) {
+          process.stderr.write("[detect-fallback] Corrupt session state, starting fresh: " + e.message + "\n");
+        }
 
         if (!state.modelCounts || typeof state.modelCounts !== "object") state.modelCounts = { haiku: 0, sonnet: 0, opus: 0 };
         if (!state.subagentCounts || typeof state.subagentCounts !== "object") state.subagentCounts = { haiku: 0, sonnet: 0, opus: 0 };

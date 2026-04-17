@@ -9,6 +9,7 @@
 var fs = require("fs");
 var path = require("path");
 var io = require("./lib/io");
+var sleep = require("./lib/sleep");
 
 // Consolidated: path constants imported from io.js (single source of truth)
 var LOGS_DIR = path.join(io.BASE_DIR, "logs");
@@ -28,22 +29,28 @@ function acquireSessionLock() {
       fs.writeFileSync(LOCK_PATH, String(process.pid), { flag: "wx" });
       return true;
     } catch (err) {
-      try {
-        var stat = fs.statSync(LOCK_PATH);
-        if (Date.now() - stat.mtimeMs > 10000) {
-          // Check if owning PID is alive before removing stale lock
-          try {
-            var lockPid = parseInt(fs.readFileSync(LOCK_PATH, "utf8"), 10);
-            if (lockPid && !isNaN(lockPid)) {
-              try { process.kill(lockPid, 0); continue; } catch (e) { /* process dead, lock is stale */ }
-            }
-          } catch (e) {}
+      var stat;
+      try { stat = fs.statSync(LOCK_PATH); }
+      catch (e) { sleep.sleepSync(LOCK_RETRY_MS); continue; }
+
+      if (Date.now() - stat.mtimeMs > 10000) {
+        // Only force-remove if the owning PID is verifiably dead
+        var pidDead = false;
+        var pidKnown = false;
+        try {
+          var raw = fs.readFileSync(LOCK_PATH, "utf8");
+          var lockPid = parseInt(raw, 10);
+          if (lockPid && !isNaN(lockPid)) {
+            pidKnown = true;
+            try { process.kill(lockPid, 0); } catch (e) { pidDead = true; }
+          }
+        } catch (e) { /* unreadable; wait another cycle rather than force-remove */ }
+        if (pidDead || !pidKnown) {
           try { fs.unlinkSync(LOCK_PATH); } catch (e) {}
-          continue;
         }
-      } catch (e) { continue; }
-      var waitUntil = Date.now() + LOCK_RETRY_MS;
-      while (Date.now() < waitUntil) { /* busy wait */ }
+        continue;
+      }
+      sleep.sleepSync(LOCK_RETRY_MS);
     }
   }
   return false;
