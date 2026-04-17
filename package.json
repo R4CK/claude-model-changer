@@ -1,0 +1,29 @@
+{
+  "name": "claude-model-changer",
+  "version": "5.1.0",
+  "description": "Claude Code plugin that automatically routes tasks to haiku/sonnet/opus based on complexity analysis",
+  "license": "MIT",
+  "author": "NEON",
+  "keywords": ["claude", "model-routing", "complexity", "plugin"],
+  "scripts": {
+    "install-plugin": "node scripts/install-plugin.js",
+    "uninstall-plugin": "node scripts/uninstall-plugin.js",
+    "test": "node scripts/analyze-complexity.js <<< '{\"prompt\":\"fix the typo\"}'"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "files": [
+    "scripts/",
+    "config/",
+    "commands/",
+    "agents/",
+    "skills/",
+    "hooks/",
+    "logs/",
+    ".claude-plugin/",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ]
+}

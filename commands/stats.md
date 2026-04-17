@@ -5,9 +5,12 @@ argument-hint: ""
 
 The user wants to see their model routing usage statistics.
 
-Read the log file at `${CLAUDE_PLUGIN_ROOT}/logs/usage.jsonl` and parse each line as JSON.
+Run the analyzer with --stats to get computed statistics:
+```bash
+echo '{"prompt":"--stats"}' | node "${CLAUDE_PLUGIN_ROOT}/scripts/analyze-complexity.js"
+```
 
-Calculate and display these statistics in a clean table format:
+Parse the JSON output and display in a clean table format:
 
 **Summary:**
 - Total prompts analyzed (all time, today, this week)
@@ -26,7 +29,19 @@ Calculate and display these statistics in a clean table format:
 **Top 5 Categories:**
 - Most frequently matched categories with counts
 
-If the log file doesn't exist or is empty, tell the user:
-"No usage data yet. The statistics will populate as you use the model router."
+**Cost Savings:**
+- Estimated actual cost vs if all tasks used opus
+- Amount saved and savings percentage
 
-Format the output as a clear, readable summary with aligned columns.
+**Quality Ratings** (if available):
+- Average rating per model (1-5 scale)
+- Warnings for low-rated model+category combos
+- Use `/rate <1-5>` to add ratings
+
+**Budget Status** (if budgets enabled):
+- Current usage vs daily/weekly limit per model
+- Warning if approaching limits
+
+If no data exists, show: "No usage data yet. The statistics will populate as you use the model router."
+
+For visual charts, suggest: "Use `/dashboard` to generate an interactive HTML dashboard."

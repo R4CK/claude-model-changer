@@ -1,0 +1,50 @@
+{
+  "name": "claude-model-router-status",
+  "displayName": "Claude Model Router Status",
+  "description": "Shows the current Claude Model Router status in the VS Code status bar - model, score, context usage, and anomaly alerts.",
+  "version": "1.0.0",
+  "publisher": "claude-model-changer",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "Claude Model Router",
+      "properties": {
+        "claudeModelRouter.statusFilePath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the status.json file. If empty, looks in the workspace's logs/status.json."
+        },
+        "claudeModelRouter.refreshInterval": {
+          "type": "number",
+          "default": 2000,
+          "description": "How often to check for status updates (milliseconds)."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "claudeModelRouter.showDetails",
+        "title": "Claude Model Router: Show Details"
+      },
+      {
+        "command": "claudeModelRouter.refresh",
+        "title": "Claude Model Router: Refresh Status"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.80.0",
+    "@types/node": "^18.0.0",
+    "typescript": "^5.0.0"
+  }
+}

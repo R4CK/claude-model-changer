@@ -1,0 +1,25 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "r4ck",
+  "description": "R4CK's Claude Code plugin marketplace",
+  "owner": {
+    "name": "R4CK"
+  },
+  "metadata": {
+    "description": "Personal marketplace hosting the Claude Model Changer plugin and related tooling",
+    "version": "1.0.0",
+    "repository": "https://github.com/R4CK/claude-model-changer",
+    "homepage": "https://github.com/R4CK/claude-model-changer"
+  },
+  "plugins": [
+    {
+      "name": "claude-model-changer",
+      "version": "5.3.3",
+      "description": "Automatic Claude model routing (haiku/sonnet/opus) based on task complexity. 28 task categories, 4 hooks, multi-language detection (EN/HU/DE), anomaly detection, usage stats, and a /configure wizard. Saves cost on simple tasks; reserves opus for hard ones.",
+      "category": "development",
+      "source": "./",
+      "homepage": "https://github.com/R4CK/claude-model-changer",
+      "strict": false
+    }
+  ]
+}

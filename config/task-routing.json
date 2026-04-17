@@ -1,134 +1,362 @@
 {
-  "version": "1.0",
+  "version": "2.0",
+  "schemaVersion": "2.0",
   "behavior": "suggest",
+  "preferenceProfile": "custom",
   "models": {
     "haiku": {
       "label": "Simple / Fast",
-      "scoreRange": [1, 3],
+      "scoreRange": [
+        1,
+        2
+      ],
       "categories": {
         "typo_fix": {
           "label": "Typo fixes",
-          "keywords": ["fix typo", "fix the typo", "fix a typo", "typo", "spelling", "misspelling", "typos", "spellcheck"]
-        },
-        "rename": {
-          "label": "Renames",
-          "keywords": ["rename", "change name", "change variable name", "rename variable", "rename function"]
-        },
-        "formatting": {
-          "label": "Formatting",
-          "keywords": ["formatting", "indent", "whitespace", "format", "prettify", "lint fix", "fix lint"]
-        },
-        "comments": {
-          "label": "Comments",
-          "keywords": ["comment", "uncomment", "add comment", "remove comment", "comment out"]
-        },
-        "imports": {
-          "label": "Imports",
-          "keywords": ["add import", "update import", "remove import", "remove unused"]
+          "keywords": [
+            "fix typo",
+            "fix the typo",
+            "fix a typo",
+            "typo",
+            "spelling",
+            "misspelling",
+            "typos",
+            "spellcheck"
+          ]
         },
         "quick_questions": {
           "label": "Quick questions",
-          "keywords": ["what is", "what does", "where is", "which file", "explain this", "what's the difference", "is this correct", "how do i"]
+          "keywords": [
+            "what is",
+            "what does",
+            "where is",
+            "which file",
+            "explain this",
+            "what's the difference",
+            "is this correct",
+            "how do i"
+          ]
         },
         "search_list": {
           "label": "Search / List",
-          "keywords": ["show me", "list", "find", "search for", "grep", "count", "locate", "show files"]
+          "keywords": [
+            "show me",
+            "list",
+            "find",
+            "search for",
+            "grep",
+            "count",
+            "locate",
+            "show files"
+          ]
         },
-        "single_line_edit": {
-          "label": "Single-line edits",
-          "keywords": ["change the", "update the", "set the", "replace the text", "swap", "move this", "delete line", "add a line", "remove the line"]
+        "documentation": {
+          "label": "Documentation",
+          "keywords": [
+            "document",
+            "add docs",
+            "docstring",
+            "jsdoc",
+            "update readme",
+            "write docs",
+            "API docs",
+            "add comment",
+            "add comments",
+            "write documentation"
+          ]
+        },
+        "rename": {
+          "label": "Renames",
+          "keywords": [
+            "rename",
+            "change name",
+            "change variable name",
+            "rename variable",
+            "rename function"
+          ]
+        },
+        "formatting": {
+          "label": "Formatting",
+          "keywords": [
+            "formatting",
+            "indent",
+            "whitespace",
+            "format",
+            "prettify",
+            "lint fix",
+            "fix lint"
+          ]
+        },
+        "comments": {
+          "label": "Comments",
+          "keywords": [
+            "comment",
+            "uncomment",
+            "add comment",
+            "remove comment",
+            "comment out"
+          ]
+        },
+        "imports": {
+          "label": "Imports",
+          "keywords": [
+            "add import",
+            "update import",
+            "remove import",
+            "remove unused"
+          ]
         },
         "status": {
           "label": "Status checks",
-          "keywords": ["git status", "git log", "git diff", "check", "verify", "status"]
+          "keywords": [
+            "git status",
+            "git log",
+            "git diff",
+            "status"
+          ]
         }
       }
     },
     "sonnet": {
       "label": "Moderate / Balanced",
-      "scoreRange": [4, 7],
+      "scoreRange": [
+        3,
+        6
+      ],
       "categories": {
+        "single_line_edit": {
+          "label": "Single-line edits",
+          "keywords": [
+            "change the",
+            "update the",
+            "set the",
+            "replace the text",
+            "swap",
+            "move this",
+            "delete line",
+            "add a line",
+            "remove the line"
+          ]
+        },
         "feature_addition": {
           "label": "Feature addition",
-          "keywords": ["add feature", "implement", "create function", "new feature", "add support", "create a new", "build a"]
+          "keywords": [
+            "add feature",
+            "implement",
+            "create function",
+            "new feature",
+            "add support",
+            "create a new",
+            "build a"
+          ]
         },
         "bug_fixing": {
           "label": "Bug fixing",
-          "keywords": ["fix bug", "debug", "fix the bug", "fix the issue", "fix the error", "fix the problem", "bugfix", "troubleshoot", "diagnose", "investigate bug", "not working", "broken"]
+          "keywords": [
+            "fix bug",
+            "debug",
+            "fix the bug",
+            "fix the issue",
+            "fix the error",
+            "fix the problem",
+            "bugfix",
+            "troubleshoot",
+            "diagnose",
+            "investigate bug",
+            "not working",
+            "broken"
+          ]
         },
         "testing": {
           "label": "Testing",
-          "keywords": ["write test", "add test", "unit test", "test coverage", "e2e test", "integration test", "test case"]
+          "keywords": [
+            "write test",
+            "add test",
+            "unit test",
+            "test coverage",
+            "e2e test",
+            "integration test",
+            "test case"
+          ]
         },
         "code_review": {
           "label": "Code review",
-          "keywords": ["review", "code review", "check for bugs", "suggest improvements", "find issues", "review this"]
+          "keywords": [
+            "review",
+            "code review",
+            "check for bugs",
+            "suggest improvements",
+            "find issues",
+            "review this"
+          ]
         },
         "small_refactoring": {
           "label": "Small refactoring",
-          "keywords": ["refactor this", "clean up", "simplify", "optimize this", "extract function", "extract method", "extract component"]
+          "keywords": [
+            "refactor this",
+            "clean up",
+            "simplify",
+            "optimize this",
+            "extract function",
+            "extract method",
+            "extract component"
+          ]
         },
         "component_creation": {
           "label": "Component creation",
-          "keywords": ["create component", "add component", "new component", "create a class", "create module"]
+          "keywords": [
+            "create component",
+            "add component",
+            "new component",
+            "create a class",
+            "create module"
+          ]
         },
         "integration": {
           "label": "Integration",
-          "keywords": ["integrate", "connect", "hook up", "wire up", "add API", "endpoint", "add route"]
+          "keywords": [
+            "integrate",
+            "connect",
+            "hook up",
+            "wire up",
+            "add API",
+            "endpoint",
+            "add route"
+          ]
         },
         "configuration": {
           "label": "Configuration",
-          "keywords": ["configure", "set up", "install", "setup", "init", "initialize", "bootstrap"]
+          "keywords": [
+            "configure",
+            "set up",
+            "install",
+            "setup",
+            "init",
+            "initialize",
+            "bootstrap"
+          ]
         },
         "error_handling": {
           "label": "Error handling",
-          "keywords": ["error handling", "validation", "add validation", "handle edge case", "handle error", "try catch"]
-        },
-        "documentation": {
-          "label": "Documentation",
-          "keywords": ["document", "add docs", "docstring", "jsdoc", "update readme", "write docs", "API docs"]
+          "keywords": [
+            "error handling",
+            "validation",
+            "add validation",
+            "handle edge case",
+            "handle error",
+            "try catch"
+          ]
         }
       }
     },
     "opus": {
       "label": "Complex / Expert",
-      "scoreRange": [8, 10],
+      "scoreRange": [
+        7,
+        10
+      ],
       "categories": {
         "architecture": {
           "label": "Architecture",
-          "keywords": ["architect", "architecture", "system design", "design pattern", "redesign", "rearchitect"]
+          "keywords": [
+            "architect",
+            "architecture",
+            "system design",
+            "design pattern",
+            "redesign",
+            "rearchitect"
+          ]
         },
         "large_refactoring": {
           "label": "Large refactoring",
-          "keywords": ["refactor entire", "restructure", "rewrite", "migrate", "overhaul", "modernize", "refactor across"]
+          "keywords": [
+            "refactor entire",
+            "restructure",
+            "rewrite",
+            "migrate",
+            "overhaul",
+            "modernize",
+            "refactor across"
+          ]
         },
         "multi_file_work": {
           "label": "Multi-file work",
-          "keywords": ["across all files", "entire project", "full stack", "project-wide", "codebase-wide", "every file", "throughout the codebase"]
+          "keywords": [
+            "across all files",
+            "entire project",
+            "full stack",
+            "project-wide",
+            "codebase-wide",
+            "every file",
+            "throughout the codebase"
+          ]
         },
         "algorithms": {
           "label": "Algorithms",
-          "keywords": ["algorithm", "data structure", "optimize performance", "concurrency", "parallel", "thread-safe", "distributed"]
+          "keywords": [
+            "algorithm",
+            "data structure",
+            "optimize performance",
+            "concurrency",
+            "parallel",
+            "thread-safe",
+            "distributed"
+          ]
         },
         "security": {
           "label": "Security",
-          "keywords": ["security audit", "vulnerability", "security review", "penetration", "OWASP", "security analysis"]
+          "keywords": [
+            "security audit",
+            "vulnerability",
+            "security review",
+            "penetration",
+            "OWASP",
+            "security analysis"
+          ]
         },
         "performance": {
           "label": "Performance",
-          "keywords": ["performance audit", "profiling", "benchmark", "optimize across", "bottleneck", "performance optimization"]
+          "keywords": [
+            "performance audit",
+            "profiling",
+            "benchmark",
+            "optimize across",
+            "bottleneck",
+            "performance optimization"
+          ]
         },
         "planning": {
           "label": "Planning",
-          "keywords": ["implementation plan", "migration plan", "roadmap", "comprehensive analysis", "thorough review", "tech strategy"]
+          "keywords": [
+            "implementation plan",
+            "migration plan",
+            "roadmap",
+            "comprehensive analysis",
+            "thorough review",
+            "tech strategy"
+          ]
         },
         "system_design": {
           "label": "System design",
-          "keywords": ["state machine", "cache invalidation", "consensus", "event-driven", "microservices", "message queue"]
+          "keywords": [
+            "state machine",
+            "cache invalidation",
+            "consensus",
+            "event-driven",
+            "microservices",
+            "message queue"
+          ]
         },
         "tech_debt": {
           "label": "Tech debt",
-          "keywords": ["tech debt", "technical debt", "legacy code", "deprecation strategy", "end of life", "sunset"]
+          "keywords": [
+            "tech debt",
+            "technical debt",
+            "legacy code",
+            "deprecation strategy",
+            "end of life",
+            "sunset"
+          ]
         }
       }
     }
@@ -136,37 +364,551 @@
   "scoring": {
     "weights": {
       "keyword": 0.35,
-      "multiFile": 0.20,
-      "structure": 0.20,
+      "multiFile": 0.2,
+      "structure": 0.2,
       "wordCount": 0.15,
-      "codeBlocks": 0.10
+      "codeBlocks": 0.1
     },
+    "keywordInfluence": "override",
     "questionReduction": 0.8,
     "multiFileIndicators": [
-      "multiple files", "several files", "all files", "across files",
-      "many files", "each file", "every file", "throughout",
-      "project-wide", "codebase-wide", "repo-wide",
-      "components", "modules", "services", "layers",
-      "frontend and backend", "client and server",
-      "database and api", "api and ui"
+      "multiple files",
+      "several files",
+      "all files",
+      "across files",
+      "many files",
+      "each file",
+      "every file",
+      "throughout",
+      "project-wide",
+      "codebase-wide",
+      "repo-wide",
+      "components",
+      "modules",
+      "services",
+      "layers",
+      "frontend and backend",
+      "client and server",
+      "database and api",
+      "api and ui"
     ]
   },
-  "overrideMarkers": ["@haiku", "@sonnet", "@opus"],
+  "overrideMarkers": [
+    "@haiku",
+    "@sonnet",
+    "@opus"
+  ],
   "autoMode": {
     "enabled": true,
     "autoThresholds": {
-      "haiku": [1, 2],
-      "opus": [9, 10]
+      "haiku": [
+        1,
+        2
+      ],
+      "opus": [
+        8,
+        10
+      ]
     },
-    "borderlineZones": [3, 4, 7, 8]
+    "borderlineZones": [
+      3,
+      4,
+      7,
+      8
+    ],
+    "borderlineAutoResolve": {
+      "enabled": true,
+      "minHistory": 5,
+      "minAvgRating": 3.5
+    }
   },
   "costEstimates": {
-    "haiku": { "inputPer1M": 0.25, "outputPer1M": 1.25, "label": "~10x cheaper than opus" },
-    "sonnet": { "inputPer1M": 3.00, "outputPer1M": 15.00, "label": "balanced cost/performance" },
-    "opus": { "inputPer1M": 15.00, "outputPer1M": 75.00, "label": "most capable, highest cost" }
+    "haiku": {
+      "inputPer1M": 0.25,
+      "outputPer1M": 1.25,
+      "label": "~10x cheaper than opus"
+    },
+    "sonnet": {
+      "inputPer1M": 3,
+      "outputPer1M": 15,
+      "label": "balanced cost/performance"
+    },
+    "opus": {
+      "inputPer1M": 15,
+      "outputPer1M": 75,
+      "label": "most capable, highest cost"
+    }
   },
   "logging": {
+    "enabled": true
+  },
+  "contextAware": {
     "enabled": true,
-    "maxEntries": 1000
+    "projectSignals": {
+      "python": {
+        "boostKeywords": ["django", "flask", "fastapi", "pandas", "numpy"],
+        "defaultBoost": 0
+      },
+      "javascript": {
+        "boostKeywords": ["react", "express", "node", "npm"],
+        "defaultBoost": 0
+      },
+      "typescript": {
+        "boostKeywords": ["typescript", "angular", "nest"],
+        "defaultBoost": 0
+      },
+      "rust": {
+        "boostKeywords": ["rust", "cargo", "crate"],
+        "defaultBoost": 1
+      },
+      "go": {
+        "boostKeywords": ["goroutine", "channel", "go mod"],
+        "defaultBoost": 0
+      }
+    }
+  },
+  "sessionStickiness": {
+    "enabled": true,
+    "topicChangeThreshold": 0.3
+  },
+  "savingsTracking": {
+    "enabled": true,
+    "avgTokensPerTask": {
+      "haiku": 1500,
+      "sonnet": 3000,
+      "opus": 6000
+    }
+  },
+  "budgets": {
+    "enabled": false,
+    "period": "daily",
+    "limits": {
+      "haiku": 500000,
+      "sonnet": 200000,
+      "opus": 50000
+    },
+    "warnAt": 80,
+    "blockAutoRouteAt": 100
+  },
+  "rateLimit": {
+    "maxAutoRoutesPerMinute": 5,
+    "cooldownSeconds": 60
+  },
+  "safeMode": false,
+  "promptHints": {
+    "enabled": true,
+    "hints": {
+      "haiku": "Tip: Keep it short and specific - one clear task per prompt works best with fast models.",
+      "sonnet": "Tip: Include relevant context but stay focused - describe what and why for best results.",
+      "opus": "Tip: Include full context, architecture details, constraints, and expected behavior for best results."
+    }
+  },
+  "contextMonitor": {
+    "enabled": true,
+    "maxContextTokens": 200000,
+    "thresholds": {
+      "compactSuggest": 55,
+      "compactWarn": 65,
+      "compactForce": 75,
+      "forceCheaper": 90
+    },
+    "taskSplitThreshold": 40,
+    "taskSplitMinScore": 6
+  },
+  "adaptiveWeights": {
+    "enabled": true,
+    "minRatings": 10,
+    "minWeight": 0.05,
+    "maxWeight": 0.6
+  },
+  "translations": {
+    "hu": {
+      "typo_fix": [
+        "elírás",
+        "javítsd az elírást",
+        "elgépelés",
+        "helyesírás",
+        "helyesírási hiba"
+      ],
+      "rename": [
+        "nevezd át",
+        "átnevezés",
+        "változó átnevezése",
+        "függvény átnevezése"
+      ],
+      "formatting": [
+        "formázás",
+        "behúzás",
+        "formázd meg",
+        "szépítsd ki"
+      ],
+      "comments": [
+        "komment",
+        "megjegyzés",
+        "adj hozzá kommentet",
+        "töröld a kommentet"
+      ],
+      "imports": [
+        "import hozzáadása",
+        "import frissítése",
+        "import törlése"
+      ],
+      "quick_questions": [
+        "mi az",
+        "mi ez",
+        "hol van",
+        "melyik fájl",
+        "magyarázd el",
+        "mi a különbség",
+        "hogyan"
+      ],
+      "search_list": [
+        "mutasd meg",
+        "keresd meg",
+        "listázd",
+        "keress rá",
+        "hol található"
+      ],
+      "single_line_edit": [
+        "változtasd meg",
+        "módosítsd",
+        "cseréld ki",
+        "töröld a sort",
+        "adj hozzá egy sort"
+      ],
+      "status": [
+        "git állapot",
+        "ellenőrizd",
+        "státusz"
+      ],
+      "feature_addition": [
+        "adj hozzá",
+        "implementáld",
+        "készíts",
+        "új funkció",
+        "hozz létre",
+        "építs"
+      ],
+      "bug_fixing": [
+        "javítsd a hibát",
+        "hibakeresés",
+        "javítsd ki",
+        "nem működik",
+        "hibás",
+        "debugold"
+      ],
+      "testing": [
+        "írj tesztet",
+        "teszt",
+        "egységteszt",
+        "teszteld le",
+        "tesztelés"
+      ],
+      "code_review": [
+        "nézd át",
+        "kód átnézés",
+        "ellenőrizd a kódot",
+        "review"
+      ],
+      "small_refactoring": [
+        "refaktoráld",
+        "tisztítsd meg",
+        "egyszerűsítsd",
+        "optimalizáld"
+      ],
+      "component_creation": [
+        "komponens létrehozása",
+        "új komponens",
+        "osztály létrehozása",
+        "modul készítése"
+      ],
+      "integration": [
+        "integráld",
+        "csatlakoztasd",
+        "kösd össze",
+        "API hozzáadása"
+      ],
+      "configuration": [
+        "konfiguráld",
+        "állítsd be",
+        "telepítsd",
+        "inicializáld"
+      ],
+      "error_handling": [
+        "hibakezelés",
+        "validáció",
+        "adj hozzá validációt",
+        "kezeld a hibát"
+      ],
+      "documentation": [
+        "dokumentáld",
+        "dokumentáció",
+        "doksit írj",
+        "readme frissítése"
+      ],
+      "architecture": [
+        "architektúra",
+        "rendszertervezés",
+        "tervezési minta",
+        "újratervezés"
+      ],
+      "large_refactoring": [
+        "teljes refaktorálás",
+        "átstruktúrálás",
+        "újraírás",
+        "migráció",
+        "modernizálás"
+      ],
+      "multi_file_work": [
+        "minden fájlban",
+        "teljes projekt",
+        "projekt szerte",
+        "kódbázis szerte"
+      ],
+      "algorithms": [
+        "algoritmus",
+        "adatszerkezet",
+        "teljesítmény optimalizálás",
+        "párhuzamosítás"
+      ],
+      "security": [
+        "biztonsági audit",
+        "sebezhetőség",
+        "biztonsági ellenőrzés"
+      ],
+      "performance": [
+        "teljesítmény audit",
+        "profilozás",
+        "szűk keresztmetszet",
+        "benchmark"
+      ],
+      "planning": [
+        "megvalósítási terv",
+        "migrációs terv",
+        "ütemterv",
+        "átfogó elemzés"
+      ],
+      "system_design": [
+        "állapotgép",
+        "cache kezelés",
+        "eseményvezérelt",
+        "mikroszolgáltatások"
+      ],
+      "tech_debt": [
+        "technikai adósság",
+        "legacy kód",
+        "elavult kód"
+      ]
+    },
+    "de": {
+      "typo_fix": [
+        "Tippfehler",
+        "Tippfehler beheben",
+        "Rechtschreibfehler",
+        "Schreibfehler"
+      ],
+      "rename": [
+        "umbenennen",
+        "Variable umbenennen",
+        "Funktion umbenennen",
+        "Name ändern"
+      ],
+      "formatting": [
+        "Formatierung",
+        "Einrückung",
+        "formatieren",
+        "aufräumen"
+      ],
+      "comments": [
+        "Kommentar",
+        "Kommentar hinzufügen",
+        "Kommentar entfernen",
+        "auskommentieren"
+      ],
+      "imports": [
+        "Import hinzufügen",
+        "Import aktualisieren",
+        "Import entfernen"
+      ],
+      "quick_questions": [
+        "was ist",
+        "was macht",
+        "wo ist",
+        "welche Datei",
+        "erkläre",
+        "was ist der Unterschied",
+        "wie"
+      ],
+      "search_list": [
+        "zeig mir",
+        "auflisten",
+        "finden",
+        "suche nach",
+        "wo befindet sich"
+      ],
+      "single_line_edit": [
+        "ändere",
+        "aktualisiere",
+        "ersetze",
+        "Zeile löschen",
+        "Zeile hinzufügen"
+      ],
+      "status": [
+        "Git Status",
+        "überprüfe",
+        "Status"
+      ],
+      "feature_addition": [
+        "füge hinzu",
+        "implementiere",
+        "erstelle",
+        "neues Feature",
+        "baue"
+      ],
+      "bug_fixing": [
+        "Bug beheben",
+        "debuggen",
+        "Fehler beheben",
+        "funktioniert nicht",
+        "kaputt",
+        "repariere"
+      ],
+      "testing": [
+        "schreibe Test",
+        "Test",
+        "Unit-Test",
+        "teste",
+        "Testfall"
+      ],
+      "code_review": [
+        "überprüfe",
+        "Code-Review",
+        "prüfe den Code",
+        "Review"
+      ],
+      "small_refactoring": [
+        "refaktoriere",
+        "bereinige",
+        "vereinfache",
+        "optimiere"
+      ],
+      "component_creation": [
+        "Komponente erstellen",
+        "neue Komponente",
+        "Klasse erstellen",
+        "Modul erstellen"
+      ],
+      "integration": [
+        "integriere",
+        "verbinde",
+        "verknüpfe",
+        "API hinzufügen"
+      ],
+      "configuration": [
+        "konfiguriere",
+        "einrichten",
+        "installiere",
+        "initialisiere"
+      ],
+      "error_handling": [
+        "Fehlerbehandlung",
+        "Validierung",
+        "Validierung hinzufügen",
+        "Fehler behandeln"
+      ],
+      "documentation": [
+        "dokumentiere",
+        "Dokumentation",
+        "Doku schreiben",
+        "Readme aktualisieren"
+      ],
+      "architecture": [
+        "Architektur",
+        "Systemdesign",
+        "Entwurfsmuster",
+        "Neugestaltung"
+      ],
+      "large_refactoring": [
+        "komplett refaktorieren",
+        "umstrukturieren",
+        "Neuschreiben",
+        "Migration",
+        "modernisieren"
+      ],
+      "multi_file_work": [
+        "alle Dateien",
+        "gesamtes Projekt",
+        "projektweit",
+        "Codebasis-weit"
+      ],
+      "algorithms": [
+        "Algorithmus",
+        "Datenstruktur",
+        "Leistungsoptimierung",
+        "Parallelisierung"
+      ],
+      "security": [
+        "Sicherheitsaudit",
+        "Schwachstelle",
+        "Sicherheitsüberprüfung"
+      ],
+      "performance": [
+        "Leistungsaudit",
+        "Profiling",
+        "Engpass",
+        "Benchmark"
+      ],
+      "planning": [
+        "Implementierungsplan",
+        "Migrationsplan",
+        "Roadmap",
+        "umfassende Analyse"
+      ],
+      "system_design": [
+        "Zustandsmaschine",
+        "Cache-Verwaltung",
+        "ereignisgesteuert",
+        "Microservices"
+      ],
+      "tech_debt": [
+        "technische Schulden",
+        "Legacy-Code",
+        "veralteter Code"
+      ]
+    }
+  },
+  "goalVerification": {
+    "enabled": true,
+    "minRatingsPerPair": 5,
+    "poorThreshold": 2.5,
+    "autoApply": false
+  },
+  "preflight": {
+    "enabled": true,
+    "opusMinWords": 20,
+    "suggestFileRefs": true,
+    "suggestCriteria": true
+  },
+  "anomalyDetection": {
+    "enabled": true,
+    "thresholds": {
+      "opusSpike": 2,
+      "costSpike": 2,
+      "scoreDrift": 3
+    }
+  },
+  "apiLimits": {
+    "enabled": false,
+    "requestsPerMinute": 60,
+    "tokensPerMinute": 100000,
+    "warnAtPercent": 80,
+    "forceHaikuAtPercent": 95
+  },
+  "planLimits": {
+    "sessionLimit": 50,
+    "weeklyAllModels": 200,
+    "weeklyHaiku": 200,
+    "weeklySonnet": 150,
+    "weeklyOpus": 50
   }
 }

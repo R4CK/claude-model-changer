@@ -1,0 +1,36 @@
+# Runtime logs (generated during usage)
+logs/*.jsonl
+logs/*.json
+logs/*.html
+logs/*.log
+logs/*.flag
+logs/*.md
+!logs/.gitkeep
+
+# Runtime caches
+**/.preflight-cache.json
+**/.write-probe
+
+# Dependencies
+node_modules/
+
+# VS Code extension build output
+vscode-extension/out/
+vscode-extension/node_modules/
+
+# User-specific settings
+.claude/settings.local.json
+.claude/worktrees/
+
+# Local archives & legacy installer
+*.rar
+*.zi
+*.zip
+claude-modell-changer-install.js
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.swp
+.vscode/
+.idea/

@@ -1,13 +1,46 @@
 {
   "description": "Analyzes user prompt complexity and suggests the appropriate model for routing",
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "_R=\"${CLAUDE_PLUGIN_ROOT}\"; [ -z \"$_R\" ] && _R=\"$HOME/.claude/plugins/cache/neon-local/claude-model-changer/2.0.0\"; node \"$_R/scripts/runtime-check.js\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
     "UserPromptSubmit": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/analyze-complexity.js\"",
-            "timeout": 10
+            "command": "_R=\"${CLAUDE_PLUGIN_ROOT}\"; [ -z \"$_R\" ] && _R=\"$HOME/.claude/plugins/cache/neon-local/claude-model-changer/2.0.0\"; node \"$_R/scripts/analyze-complexity.js\"",
+            "timeout": 60
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "_R=\"${CLAUDE_PLUGIN_ROOT}\"; [ -z \"$_R\" ] && _R=\"$HOME/.claude/plugins/cache/neon-local/claude-model-changer/2.0.0\"; node \"$_R/scripts/enforce-stats.js\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "SubagentComplete": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "_R=\"${CLAUDE_PLUGIN_ROOT}\"; [ -z \"$_R\" ] && _R=\"$HOME/.claude/plugins/cache/neon-local/claude-model-changer/2.0.0\"; node \"$_R/scripts/detect-fallback.js\"",
+            "timeout": 15
           }
         ]
       }

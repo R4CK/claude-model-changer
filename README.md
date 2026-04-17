@@ -1,102 +1,181 @@
 # Claude Model Changer
 
-A Claude Code plugin that automatically routes tasks to the appropriate model (haiku/sonnet/opus) based on complexity analysis.
+> **Stop paying Opus prices for typo fixes.** Automatic Claude Code plugin that routes each task to the right model — Haiku for trivia, Sonnet for the middle ground, Opus only when you actually need it.
 
-## Features
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Node](https://img.shields.io/badge/node-%3E%3D16-brightgreen)](package.json)
+[![Plugin Version](https://img.shields.io/badge/plugin-v5.3.3-blue)](.claude-plugin/plugin.json)
 
-- **Automatic complexity scoring** on every prompt (1-10 scale)
-- **Predefined task categories** mapped to models (28 categories across 3 models)
-- **Fully configurable** via `config/task-routing.json`
-- **Auto mode** for high-confidence scores (1-2 and 9-10) - delegates without asking
-- **Borderline detection** warns when score is near model boundaries (3-4 or 7-8)
-- **Cost estimation** shows relative cost info for each recommended model
-- **Usage statistics** tracks routing history with `/stats` command
-- **Project-specific overrides** via `.claude/model-routing.json` per project
-- **Manual override** with `@haiku`/`@sonnet`/`@opus` markers or `/route` command
-- **Score checking** with `/complexity` command
+---
 
-## Installation
+## What it does
 
-Install as a Claude Code plugin:
+On every prompt, this plugin:
+
+1. **Scores the task** on a 1–10 complexity scale using a weighted heuristic (keywords, file paths, code blocks, multi-file indicators, structural cues, language).
+2. **Maps the score to a model**: Haiku (1–3), Sonnet (4–7), Opus (8–10).
+3. **Routes the work** to the matching subagent — automatically for high-confidence cases, with a confirmation prompt for borderline scores.
+4. **Tracks everything** in a local usage log so you can see real cost savings via `/stats`, `/dashboard`, and `/tune`.
+
+It runs entirely on your machine. No telemetry, no external API calls, no data leaves your laptop.
+
+### Why it exists
+
+A typical Claude Code session mixes trivial edits ("rename this variable") with hard architectural work. Running both through Opus is wasteful — Haiku is ~10× cheaper and just as capable for the easy stuff. This plugin makes the choice for you.
+
+Real numbers from the included example log:
+- Average cost reduction on mixed workloads: **40–60%**
+- Time spent thinking about which model to use: **0**
+
+---
+
+## Quick install
+
+### Option A — From the marketplace (recommended)
 
 ```bash
-claude plugin add "/path/to/claude-model-changer"
+claude plugin marketplace add https://github.com/R4CK/claude-model-changer
+claude plugin install claude-model-changer@r4ck
 ```
 
-Or copy to your Claude Code plugins directory.
+Restart Claude Code. Done. Updates are a one-liner:
 
-## Usage
-
-### Automatic Routing
-Just type your prompt normally. The plugin will:
-1. Analyze complexity
-2. Show the recommended model, matched category, and cost estimate
-3. **Auto-route** for clear cases (score 1-2 or 9-10) without asking
-4. **Ask for confirmation** for moderate scores (3-7)
-5. **Flag borderline** scores (3-4 or 7-8) with both model options
-
-### Manual Override
-```
-@opus redesign the authentication system
-```
-or
-```
-/route sonnet add input validation to the form
+```bash
+claude plugin update claude-model-changer
 ```
 
-### Check Score
-```
-/complexity implement a caching layer across all services
+### Option B — Self-contained installer (offline, single file)
+
+Download [`dist/install.js`](dist/install.js) and run:
+
+```bash
+node install.js
 ```
 
-### View Statistics
+That's it. The bundle is 402 KB, embeds all 52 plugin files, and registers the plugin in your central `~/.claude` directory. Works without internet, without `git`, without the Claude CLI being on `PATH` (it falls back to manual registration).
+
+To uninstall:
+
+```bash
+node install.js --uninstall
 ```
-/stats
+
+### Option C — From source (for development)
+
+Clone the repo and run the launcher for your platform:
+
+```bash
+git clone https://github.com/R4CK/claude-model-changer
+cd claude-model-changer
+
+./install.sh        # Linux / macOS / Git Bash
+.\install.ps1       # Windows PowerShell
+install.bat         # Windows cmd
 ```
+
+The source-tree installers run a **10-point preflight** before installing (Node version, `~/.claude` writability, JSON validity, hook script references, dry-run of the analyzer). If anything fails, installation aborts with a precise error.
+
+If Node.js is missing, the installer attempts auto-install via the right tool for your OS (winget / choco on Windows; apt / dnf / pacman / brew elsewhere).
+
+---
+
+## Requirements
+
+- **Claude Code** (any recent version with plugin support)
+- **Node.js ≥ 16** (LTS recommended)
+- ~2 MB free disk in `~/.claude/plugins/cache/`
+
+---
+
+## How routing works
+
+```
+Your prompt
+    │
+    ▼
+┌─────────────────────────────────────────────────┐
+│  UserPromptSubmit hook                          │
+│    └─ scripts/analyze-complexity.js             │
+│         ├─ Score: 1–10                          │
+│         ├─ Match category (28 total)            │
+│         ├─ Detect language (EN/HU/DE)           │
+│         ├─ Confidence + borderline check        │
+│         └─ Cost estimate                        │
+└─────────────────────────────────────────────────┘
+    │
+    ▼
+┌─────────────────────────────────────────────────┐
+│  Decision                                        │
+│    ├─ Score 1–2 + high confidence               │
+│    │     → AUTO-ROUTE to haiku-worker           │
+│    ├─ Score 3–4 or 7–8 (borderline)             │
+│    │     → ASK user (haiku/sonnet or sonnet/opus)│
+│    ├─ Score 5–7                                 │
+│    │     → SUGGEST sonnet, ask to confirm       │
+│    └─ Score 9–10 + high confidence              │
+│          → AUTO-ROUTE to opus-worker            │
+└─────────────────────────────────────────────────┘
+```
+
+### Scoring weights (configurable in `config/task-routing.json`)
+
+| Factor | Weight | What it catches |
+|--------|--------|-----------------|
+| Keyword match | 35% | "refactor", "typo", "architecture", etc. |
+| Multi-file indicators | 20% | "across all files", "project-wide" |
+| Structural complexity | 20% | Numbered lists, file paths, bullets |
+| Word count | 15% | Longer prompts trend higher |
+| Code blocks | 10% | Number of \`\`\` fences |
+
+Questions get a 20% reduction (asking *about* code is usually easier than writing it).
+
+### The 28 task categories
+
+Predefined buckets, each with example keywords:
+
+- **Haiku (9):** typo, formatting, comments, imports, quick questions, search/list, single-line edits, status checks, renames
+- **Sonnet (10):** bug fixing, configuration, testing, code review, small refactoring, component creation, integration, error handling, documentation, feature addition
+- **Opus (9):** architecture, large refactoring, multi-file work, algorithms, security, performance, planning, system design, tech debt
+
+Edit `config/task-routing.json` to add your own categories or move keywords between models.
+
+---
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `/stats` | Usage breakdown (per model, per category, today/week, cost estimate) |
+| `/dashboard` | Generate an interactive HTML dashboard |
+| `/configure` | Settings wizard — adjust thresholds, weights, auto-mode behavior |
+| `/complexity <text>` | Score a prompt without routing |
+| `/benchmark <text>` | Compare how all three models would handle the same task |
+| `/route <model> <task>` | Manual override |
+| `/rate <1-5>` | Rate the last routing decision (feeds the auto-tuner) |
+| `/tune` | Get suggestions to improve your routing config |
+| `/health` | Plugin self-diagnostics |
+
+### Manual override (any prompt)
+
+```
+@haiku what does this regex do?
+@opus design a multi-tenant cache invalidation strategy
+@sonnet add input validation to the signup form
+```
+
+---
 
 ## Configuration
 
-Edit `config/task-routing.json` to customize task-to-model mappings.
+### Per-user (global)
 
-### Default Mappings
+Edit `~/.claude/plugins/cache/<owner>/claude-model-changer/<version>/config/task-routing.json`.
 
-**Haiku** (score 1-3): Typo fixes, renames, formatting, comments, imports, quick questions, search/list, single-line edits, status checks
+The file is deep-merged at runtime, so changes take effect on the next prompt. Restart not required.
 
-**Sonnet** (score 4-7): Feature addition, bug fixing, testing, code review, small refactoring, component creation, integration, configuration, error handling, documentation
+### Per-project (overrides global)
 
-**Opus** (score 8-10): Architecture, large refactoring, multi-file work, algorithms, security, performance, planning, system design, tech debt
-
-### Auto Mode Configuration
-
-```json
-"autoMode": {
-  "enabled": true,
-  "autoThresholds": {
-    "haiku": [1, 2],
-    "opus": [9, 10]
-  },
-  "borderlineZones": [3, 4, 7, 8]
-}
-```
-
-- **autoThresholds**: Score ranges that auto-delegate without asking
-- **borderlineZones**: Scores that trigger a borderline warning
-- Set `"enabled": false` to always ask (disable auto mode)
-
-### Cost Estimates
-
-```json
-"costEstimates": {
-  "haiku": { "inputPer1M": 0.25, "outputPer1M": 1.25, "label": "~10x cheaper than opus" },
-  "sonnet": { "inputPer1M": 3.00, "outputPer1M": 15.00, "label": "balanced cost/performance" },
-  "opus": { "inputPer1M": 15.00, "outputPer1M": 75.00, "label": "most capable, highest cost" }
-}
-```
-
-### Project-Specific Overrides
-
-Create `.claude/model-routing.json` in your project root to override settings per project.
-See `config/project-override-example.json` for examples.
+Drop a `.claude/model-routing.json` file in your project root. Example:
 
 ```json
 {
@@ -105,81 +184,197 @@ See `config/project-override-example.json` for examples.
       "categories": {
         "critical_path": {
           "label": "Critical path code",
-          "keywords": ["auth module", "payment", "billing"]
+          "keywords": ["payment", "auth module", "billing", "encryption"]
         }
       }
     }
   },
-  "autoMode": { "enabled": false }
+  "autoMode": {
+    "enabled": false
+  }
 }
 ```
 
-The project config is **deep-merged** with the base config, so you only need to specify the fields you want to change.
+This forces opus for critical-path keywords *only in this project*, and disables auto-routing here even if it's globally on. The base config stays untouched.
 
-### Customization Examples
+### Auto-mode tuning
 
-Move "debug" from sonnet to haiku:
 ```json
-// In haiku.categories, add:
-"debug": {
-  "label": "Quick debugging",
-  "keywords": ["debug", "console.log"]
-}
-// Remove from sonnet.categories.bug_fixing.keywords
-```
-
-Add a new category:
-```json
-// In sonnet.categories, add:
-"database": {
-  "label": "Database work",
-  "keywords": ["sql", "query", "migration", "schema", "database"]
+"autoMode": {
+  "enabled": true,
+  "autoThresholds": {
+    "haiku": [1, 2],
+    "opus":  [9, 10]
+  },
+  "borderlineZones": [3, 4, 7, 8]
 }
 ```
 
-## Scoring System
+- `autoThresholds`: score ranges that auto-delegate without asking
+- `borderlineZones`: scores that trigger a confirmation prompt with both options
+- `enabled: false` → always ask, never auto-route
 
-| Factor | Weight | Description |
-|--------|--------|-------------|
-| Keyword matching | 35% | Matches against configured task categories |
-| Multi-file indicators | 20% | Phrases like "across all files", "project-wide" |
-| Structural complexity | 20% | Numbered lists, file paths, bullet points |
-| Word count | 15% | Longer prompts = higher complexity |
-| Code blocks | 10% | Number of code fences in the prompt |
+---
 
-Questions receive a 20% reduction factor.
+## What gets installed where
 
-## Commands
+```
+~/.claude/
+├── plugins/
+│   ├── cache/<owner>/claude-model-changer/<version>/   ← plugin files live here
+│   ├── installed_plugins.json                           ← registration entry
+│   └── marketplaces/<owner>/                            ← only via marketplace install
+└── settings.json                                        ← enabledPlugins entry
+```
 
-| Command | Description |
-|---------|-------------|
-| `/route <model> <task>` | Force a specific model (haiku/sonnet/opus) |
-| `/complexity <text>` | Check complexity score without routing |
-| `/stats` | Show usage statistics |
+`<owner>` is the marketplace name. Via the marketplace install (Option A) it's `r4ck`. Via the bundled installer (Option B) or source installer (Option C) it auto-detects from your username (`<lowercase-username>-local`), or you can override with `CMC_MARKETPLACE_OWNER=foo`.
 
-## File Structure
+The plugin is **user-scope**: available in every Claude Code session you start, in any project. Not project-scoped.
+
+---
+
+## Hooks
+
+The plugin registers four hooks in `hooks/hooks.json`:
+
+| Hook | Script | Timeout | Purpose |
+|------|--------|---------|---------|
+| `UserPromptSubmit` | `analyze-complexity.js` | 60s | Score & route every prompt |
+| `Stop` | `enforce-stats.js` | 30s | Append the mandatory stats footer |
+| `SubagentComplete` | `detect-fallback.js` | 15s | Detect if a routed subagent fell back to a different model |
+| `SessionStart` | `runtime-check.js` | 10s | Cached integrity check; warns if plugin files are missing or corrupted |
+
+Runtime-check is silent on success and never blocks session start.
+
+---
+
+## Repository layout
 
 ```
 claude-model-changer/
-├── .claude-plugin/plugin.json              # Plugin manifest
-├── config/
-│   ├── task-routing.json                   # Editable task-to-model mappings
-│   └── project-override-example.json       # Example project override
-├── scripts/analyze-complexity.js           # Complexity scoring engine
-├── hooks/hooks.json                        # UserPromptSubmit hook config
-├── logs/usage.jsonl                        # Usage log (auto-generated)
+├── .claude-plugin/
+│   ├── plugin.json              # Plugin manifest
+│   └── marketplace.json         # Marketplace manifest (lets `claude plugin marketplace add` work)
 ├── agents/
-│   ├── haiku-worker.md                     # Fast model agent
-│   ├── sonnet-worker.md                    # Balanced model agent
-│   └── opus-worker.md                      # Complex model agent
-├── commands/
-│   ├── route.md                            # /route command
-│   ├── complexity.md                       # /complexity command
-│   └── stats.md                            # /stats command
-└── skills/model-router/SKILL.md            # Skill documentation
+│   ├── haiku-worker.md          # Subagent for SIMPLE tasks
+│   ├── sonnet-worker.md         # Subagent for MEDIUM tasks
+│   └── opus-worker.md           # Subagent for COMPLEX tasks
+├── commands/                    # Slash commands (/stats, /tune, /configure, ...)
+├── config/
+│   ├── task-routing.json        # 28 categories, weights, thresholds
+│   └── patterns.json            # User-saved prompt → model mappings
+├── hooks/
+│   └── hooks.json               # 4 hook definitions
+├── scripts/
+│   ├── analyze-complexity.js    # ~30 KB - the scoring engine
+│   ├── enforce-stats.js         # Stats footer for every response
+│   ├── detect-fallback.js       # Subagent fallback detection
+│   ├── runtime-check.js         # SessionStart integrity check
+│   ├── preflight.js             # 10-point install validation
+│   ├── install-plugin.js        # Manual installer (called by source installers)
+│   ├── uninstall-plugin.js      # Cleanup
+│   ├── build-installer.js       # Generates dist/install.js bundle
+│   ├── generate-dashboard.js    # /dashboard backing script
+│   ├── live-dashboard.js        # Live HTML dashboard
+│   └── lib/                     # Shared modules: scoring, config, session, stats, io, health, ...
+├── skills/
+│   └── model-router/            # Skill bundle exposed via SKILL.md
+├── dist/
+│   ├── install.js               # Self-contained 402 KB installer (Option B)
+│   └── README.md                # Bundle install docs
+├── docs/                        # Architecture & user-manual docs
+├── install.sh                   # Source installer (POSIX)
+├── install.ps1                  # Source installer (PowerShell)
+├── install.bat                  # Source installer (cmd wrapper)
+├── INSTALL.md                   # Detailed install guide with preflight info
+├── package.json
+└── README.md                    # ← you are here
 ```
 
-## Requirements
+---
 
-- Node.js (for the complexity analyzer script)
-- Claude Code with plugin support
+## Diagnostics & troubleshooting
+
+### "Nothing happens when I prompt"
+
+```bash
+node scripts/preflight.js
+```
+
+This runs all 10 checks and prints exactly what's broken. Common culprits:
+- Node not on PATH inside Claude Code's hook environment
+- `~/.claude/plugins/cache/.../scripts/analyze-complexity.js` was modified or deleted
+- `task-routing.json` has a JSON syntax error
+
+### `/health` command
+
+Same checks, but inside Claude Code with a nicer formatted output.
+
+### Hook timing out
+
+Default timeout is 60s for `UserPromptSubmit`. If your machine is genuinely slow on Node startup (cold cache, antivirus scanning), bump it in `hooks/hooks.json`.
+
+### Wrong model being chosen
+
+Run `/tune` — it analyzes your override history (when you said "use opus instead") and suggests config tweaks (move keywords between models, adjust thresholds, raise/lower weights).
+
+---
+
+## Development
+
+```bash
+git clone https://github.com/R4CK/claude-model-changer
+cd claude-model-changer
+
+# Run preflight (no install)
+node scripts/preflight.js
+
+# Test the analyzer directly
+echo '{"prompt":"refactor the auth module"}' | node scripts/analyze-complexity.js
+
+# Rebuild the bundled installer after changing source
+node scripts/build-installer.js
+cp install.js dist/install.js
+
+# Install from source for live testing
+./install.sh
+```
+
+After source changes, reinstall and restart Claude Code to pick them up. The source installers detect and remove any legacy `@local` registrations from older buggy installs automatically.
+
+---
+
+## How it compares
+
+| Approach | This plugin | Manual model picking | Always-Opus |
+|----------|-------------|----------------------|-------------|
+| Cost on simple tasks | ~10× cheaper | Same as picked | Always max |
+| Cognitive overhead | None | High (every prompt) | None |
+| Catches "obvious" hard tasks | Yes (auto-opus) | Depends on you | N/A |
+| Multi-language input | EN/HU/DE detected | N/A | N/A |
+| Project-specific rules | Yes | Manual | N/A |
+| Override when wrong | `@haiku`/`@opus` prefix | N/A | N/A |
+| Visible cost tracking | `/stats`, `/dashboard` | None | None |
+
+---
+
+## Contributing
+
+PRs welcome. Please:
+
+1. Run `node scripts/preflight.js` before opening — must be all green.
+2. If you change `task-routing.json` keywords, include a `/tune` rationale in the PR description.
+3. For new categories, add 3+ example keywords and a clear `label`.
+4. Hook script changes: please include a manual test command in the PR (e.g., `echo '{...}' | node scripts/your-script.js`).
+
+---
+
+## License
+
+MIT. See [LICENSE](LICENSE).
+
+---
+
+## Credits
+
+Built by [R4CK](https://github.com/R4CK). Inspired by the realization that 80% of my Claude Code prompts didn't need the smartest model in the world — they needed the *fastest* one.

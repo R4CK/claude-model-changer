@@ -1,0 +1,14 @@
+{
+  "patterns": [
+    {
+      "pattern": "deploy to prod",
+      "model": "opus",
+      "label": "Production deploy"
+    },
+    {
+      "pattern": "run tests",
+      "model": "haiku",
+      "label": "Test runner"
+    }
+  ]
+}

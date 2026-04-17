@@ -1,395 +1,116 @@
 #!/usr/bin/env node
 
+// Debug: log hook invocation + rotate debug log
+try {
+  var _debugFs = require("fs"), _debugPath = require("path");
+  var _debugDir = _debugPath.join(__dirname, "..", "logs");
+  if (!_debugFs.existsSync(_debugDir)) _debugFs.mkdirSync(_debugDir, { recursive: true });
+  _debugFs.appendFileSync(_debugPath.join(_debugDir, "hook-debug.log"),
+    new Date().toISOString() + " | hook fired | cwd=" + process.cwd() + " | __dirname=" + __dirname + "\n");
+} catch(e) {}
+
 /**
- * Claude Model Changer - Complexity Analyzer v2.0
+ * Claude Model Changer - Complexity Analyzer v6.0
  *
- * Features:
- * - Complexity scoring (1-10) with weighted heuristics
- * - Configurable task-to-model mappings (config/task-routing.json)
- * - Project-specific config override (.claude/model-routing.json)
- * - Borderline score detection with warnings
- * - Cost estimation display
- * - Auto mode for high-confidence scores
- * - Usage statistics logging
+ * Modular architecture: lib/io, lib/config, lib/scoring, lib/context-monitor,
+ * lib/monitors, lib/stats, lib/session
  */
 
 "use strict";
 
-const fs = require("fs");
-const path = require("path");
+var fs = require("fs");
+var path = require("path");
 
-// ---- CONFIG LOADING ----
+// ---- MODULE IMPORTS ----
+var io = require("./lib/io");
+var configModule = require("./lib/config");
+var scoring = require("./lib/scoring");
+var contextMonitor = require("./lib/context-monitor");
+var monitors = require("./lib/monitors");
+var stats = require("./lib/stats");
+var session = require("./lib/session");
+var sessionUtils = require("./session-utils");
+var health = require("./lib/health");
+var autoTune = require("./lib/auto-tune");
 
-function loadConfig(cwd) {
-  // 1. Load base config from plugin directory
-  var baseConfig = null;
-  var configPath = path.join(__dirname, "..", "config", "task-routing.json");
+// Startup cleanup: rotate debug log + trim all JSONL logs
+io.rotateDebugLog();
+(function startupLogRotation() {
   try {
-    baseConfig = JSON.parse(fs.readFileSync(configPath, "utf8"));
-  } catch (err) {
-    baseConfig = null;
-  }
-
-  // 2. Check for project-specific override at .claude/model-routing.json
-  if (cwd) {
-    var projectConfigPath = path.join(cwd, ".claude", "model-routing.json");
-    try {
-      var projectConfig = JSON.parse(fs.readFileSync(projectConfigPath, "utf8"));
-      // Deep merge: project config overrides base config
-      baseConfig = deepMerge(baseConfig || {}, projectConfig);
-    } catch (err) {
-      // No project override, use base config
-    }
-  }
-
-  return baseConfig;
-}
-
-function deepMerge(target, source) {
-  var result = JSON.parse(JSON.stringify(target));
-  for (var key in source) {
-    if (!source.hasOwnProperty(key)) continue;
-    if (source[key] && typeof source[key] === "object" && !Array.isArray(source[key])) {
-      result[key] = deepMerge(result[key] || {}, source[key]);
-    } else {
-      result[key] = source[key];
-    }
-  }
-  return result;
-}
-
-// ---- USAGE LOGGING ----
-
-function getLogPath() {
-  return path.join(__dirname, "..", "logs", "usage.jsonl");
-}
-
-function logUsage(entry) {
-  try {
-    var logDir = path.join(__dirname, "..", "logs");
-    if (!fs.existsSync(logDir)) {
-      fs.mkdirSync(logDir, { recursive: true });
-    }
-
-    var logPath = getLogPath();
-    var logLine = JSON.stringify(entry) + "\n";
-
-    // Append to log file
-    fs.appendFileSync(logPath, logLine, "utf8");
-
-    // Trim if over max entries
-    trimLog(logPath, 1000);
-  } catch (err) {
-    // Silent fail - logging should never break the main flow
-  }
-}
-
-function trimLog(logPath, maxEntries) {
-  try {
-    var content = fs.readFileSync(logPath, "utf8");
-    var lines = content.trim().split("\n").filter(function(l) { return l.length > 0; });
-    if (lines.length > maxEntries) {
-      // Keep only the most recent entries
-      var trimmed = lines.slice(lines.length - maxEntries);
-      fs.writeFileSync(logPath, trimmed.join("\n") + "\n", "utf8");
-    }
-  } catch (err) {
-    // Silent fail
-  }
-}
-
-function getStats() {
-  try {
-    var logPath = getLogPath();
-    if (!fs.existsSync(logPath)) return null;
-
-    var content = fs.readFileSync(logPath, "utf8");
-    var lines = content.trim().split("\n").filter(function(l) { return l.length > 0; });
-    var entries = lines.map(function(l) {
-      try { return JSON.parse(l); } catch (e) { return null; }
-    }).filter(function(e) { return e !== null; });
-
-    if (entries.length === 0) return null;
-
-    // Calculate stats
-    var total = entries.length;
-    var modelCounts = { haiku: 0, sonnet: 0, opus: 0 };
-    var categoryCounts = {};
-    var autoRouted = 0;
-    var borderline = 0;
-    var overrides = 0;
-    var scoreSum = 0;
-
-    // Time-based stats
-    var now = Date.now();
-    var todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
-    var weekStart = new Date(now - 7 * 24 * 60 * 60 * 1000);
-    var todayCount = 0;
-    var weekCount = 0;
-
-    entries.forEach(function(e) {
-      modelCounts[e.model] = (modelCounts[e.model] || 0) + 1;
-      if (e.category) {
-        categoryCounts[e.category] = (categoryCounts[e.category] || 0) + 1;
-      }
-      if (e.autoRouted) autoRouted++;
-      if (e.borderline) borderline++;
-      if (e.override) overrides++;
-      scoreSum += (e.score || 0);
-
-      var ts = new Date(e.timestamp);
-      if (ts >= todayStart) todayCount++;
-      if (ts >= weekStart) weekCount++;
-    });
-
-    // Top categories
-    var topCategories = Object.entries(categoryCounts)
-      .sort(function(a, b) { return b[1] - a[1]; })
-      .slice(0, 5);
-
-    return {
-      total: total,
-      today: todayCount,
-      thisWeek: weekCount,
-      models: modelCounts,
-      modelPercentages: {
-        haiku: total > 0 ? Math.round(modelCounts.haiku / total * 100) : 0,
-        sonnet: total > 0 ? Math.round(modelCounts.sonnet / total * 100) : 0,
-        opus: total > 0 ? Math.round(modelCounts.opus / total * 100) : 0
-      },
-      avgScore: total > 0 ? (scoreSum / total).toFixed(1) : "0",
-      autoRouted: autoRouted,
-      borderline: borderline,
-      overrides: overrides,
-      topCategories: topCategories
-    };
-  } catch (err) {
-    return null;
-  }
-}
-
-// ---- SCORING FUNCTIONS ----
-
-function scoreWordCount(wordCount) {
-  if (wordCount <= 10) return 1;
-  if (wordCount <= 25) return 2;
-  if (wordCount <= 50) return 3;
-  if (wordCount <= 100) return 4;
-  if (wordCount <= 200) return 6;
-  return 7;
-}
-
-function scoreKeywords(promptLower, config) {
-  if (!config || !config.models) return { score: 0, matchedModel: "none", matchedCategory: "none" };
-
-  var modelScores = {
-    opus: 8,
-    sonnet: 5,
-    haiku: 2
-  };
-
-  // Collect ALL keyword matches across all models
-  var allMatches = [];
-
-  for (var m = 0; m < ["opus", "sonnet", "haiku"].length; m++) {
-    var modelName = ["opus", "sonnet", "haiku"][m];
-    var modelDef = config.models[modelName];
-    if (!modelDef || !modelDef.categories) continue;
-
-    var catEntries = Object.entries(modelDef.categories);
-    for (var c = 0; c < catEntries.length; c++) {
-      var catKey = catEntries[c][0];
-      var catDef = catEntries[c][1];
-      if (!catDef.keywords) continue;
-      for (var k = 0; k < catDef.keywords.length; k++) {
-        var kwLower = catDef.keywords[k].toLowerCase();
-        if (promptLower.includes(kwLower)) {
-          allMatches.push({
-            keyword: kwLower,
-            length: kwLower.length,
-            model: modelName,
-            score: modelScores[modelName],
-            category: catDef.label || catKey
-          });
+    var logFiles = [
+      { path: io.getLogPath(), max: io.CONSTANTS.MAX_USAGE_ENTRIES },
+      { path: io.getOverrideLogPath(), max: io.CONSTANTS.MAX_OVERRIDE_ENTRIES },
+      { path: io.getFallbackLogPath(), max: io.CONSTANTS.MAX_FALLBACK_ENTRIES },
+      { path: io.getQualityLogPath(), max: io.CONSTANTS.MAX_QUALITY_ENTRIES },
+      { path: io.getBenchmarkLogPath(), max: io.CONSTANTS.MAX_BENCHMARK_ENTRIES }
+    ];
+    logFiles.forEach(function(lf) {
+      try {
+        if (fs.existsSync(lf.path)) {
+          var stat = fs.statSync(lf.path);
+          if (stat.size > lf.max * 250) { io.trimLog(lf.path, lf.max); }
         }
-      }
-    }
-  }
+      } catch (e) {}
+    });
+  } catch (e) {}
+})();
 
-  if (allMatches.length === 0) {
-    return { score: 0, matchedModel: "none", matchedCategory: "none" };
-  }
+// ---- VS CODE STATUS FILE (G2a) ----
 
-  // Sort by keyword length descending (most specific first),
-  // then by model score descending (higher complexity wins ties)
-  allMatches.sort(function(a, b) {
-    if (b.length !== a.length) return b.length - a.length;
-    return b.score - a.score;
-  });
-
-  var best = allMatches[0];
-  return {
-    score: best.score,
-    matchedModel: best.model,
-    matchedCategory: best.category
-  };
-}
-
-function scoreCodeBlocks(prompt) {
-  var codeBlockCount = (prompt.match(/```/g) || []).length / 2;
-  if (codeBlockCount === 0) return 0;
-  if (codeBlockCount <= 1) return 1;
-  if (codeBlockCount <= 3) return 2;
-  return 3;
-}
-
-function scoreMultiFileIndicators(promptLower, config) {
-  var indicators = (config && config.scoring && config.scoring.multiFileIndicators)
-    ? config.scoring.multiFileIndicators
-    : [
-        "multiple files", "several files", "all files", "across files",
-        "many files", "each file", "every file", "throughout",
-        "project-wide", "codebase-wide", "repo-wide",
-        "components", "modules", "services", "layers",
-        "frontend and backend", "client and server"
-      ];
-
-  var count = 0;
-  for (var i = 0; i < indicators.length; i++) {
-    if (promptLower.includes(indicators[i].toLowerCase())) count++;
-  }
-  if (count === 0) return 0;
-  if (count === 1) return 2;
-  return 4;
-}
-
-function scoreStructuralComplexity(prompt) {
-  var score = 0;
-
-  var numberedItems = (prompt.match(/^\s*\d+[.)]/gm) || []).length;
-  if (numberedItems >= 5) score += 3;
-  else if (numberedItems >= 3) score += 2;
-  else if (numberedItems >= 1) score += 1;
-
-  var bulletItems = (prompt.match(/^\s*[-*]/gm) || []).length;
-  if (bulletItems >= 5) score += 2;
-  else if (bulletItems >= 3) score += 1;
-
-  var questionMarks = (prompt.match(/\?/g) || []).length;
-  if (questionMarks >= 3) score += 1;
-
-  var filePaths = (prompt.match(/[\w/\\]+\.\w{1,5}/g) || []).length;
-  if (filePaths >= 5) score += 3;
-  else if (filePaths >= 3) score += 2;
-  else if (filePaths >= 1) score += 1;
-
-  return Math.min(score, 4);
-}
-
-function classifyQuestionVsTask(promptLower) {
-  var questionPatterns = [
-    /^what /, /^how /, /^why /, /^where /, /^when /,
-    /^is /, /^are /, /^can /, /^could /, /^should /,
-    /^does /, /^do /, /^will /, /^would /,
-    /\?$/
-  ];
-
-  for (var i = 0; i < questionPatterns.length; i++) {
-    if (questionPatterns[i].test(promptLower.trim())) {
-      return "question";
-    }
-  }
-  return "task";
-}
-
-function detectManualOverride(prompt, config) {
-  var markers = (config && config.overrideMarkers)
-    ? config.overrideMarkers
-    : ["@haiku", "@sonnet", "@opus"];
-
-  for (var i = 0; i < markers.length; i++) {
-    if (prompt.toLowerCase().includes(markers[i].toLowerCase())) {
-      return markers[i].replace("@", "").toLowerCase();
-    }
-  }
-
-  var useMatch = prompt.match(/\buse\s+(haiku|sonnet|opus)\b/i);
-  if (useMatch) return useMatch[1].toLowerCase();
-
-  return null;
-}
-
-// ---- BORDERLINE DETECTION ----
-
-function detectBorderline(score, config) {
-  var zones = (config && config.autoMode && config.autoMode.borderlineZones)
-    ? config.autoMode.borderlineZones
-    : [3, 4, 7, 8];
-
-  if (zones.indexOf(score) !== -1) {
-    if (score === 3 || score === 4) {
-      return { isBorderline: true, between: "haiku/sonnet", lower: "haiku", upper: "sonnet" };
-    }
-    if (score === 7 || score === 8) {
-      return { isBorderline: true, between: "sonnet/opus", lower: "sonnet", upper: "opus" };
-    }
-  }
-  return { isBorderline: false };
-}
-
-// ---- AUTO MODE DETECTION ----
-
-function shouldAutoRoute(score, config) {
-  if (!config || !config.autoMode || !config.autoMode.enabled) return false;
-
-  var thresholds = config.autoMode.autoThresholds;
-  if (!thresholds) return false;
-
-  // Check haiku auto range
-  if (thresholds.haiku && score >= thresholds.haiku[0] && score <= thresholds.haiku[1]) {
-    return true;
-  }
-  // Check opus auto range
-  if (thresholds.opus && score >= thresholds.opus[0] && score <= thresholds.opus[1]) {
-    return true;
-  }
-
-  return false;
-}
-
-// ---- COST ESTIMATION ----
-
-function getCostEstimate(model, config) {
-  if (!config || !config.costEstimates || !config.costEstimates[model]) {
-    var defaults = {
-      haiku: "~10x cheaper than opus",
-      sonnet: "balanced cost/performance",
-      opus: "most capable, highest cost"
+function writeStatusFile(result, contextUsage, budget, anomalies, apiLimits, sessionState) {
+  try {
+    io.ensureLogDir();
+    var status = {
+      timestamp: new Date().toISOString(),
+      lastModel: result.model,
+      score: result.score,
+      level: result.level,
+      confidence: result.confidence.confidence,
+      category: result.matchedCategory,
+      contextUsage: contextUsage ? contextUsage.percentage : null,
+      budgetStatus: budget.warning ? "warning" : "ok",
+      anomalyCount: anomalies ? anomalies.length : 0,
+      anomalies: anomalies ? anomalies.map(function(a) { return a.type; }) : [],
+      apiLimitPercent: apiLimits ? apiLimits.maxPercent : null,
+      override: result.override,
+      autoRouted: result.autoRoute,
+      sessionModelCounts: sessionState && sessionState.modelCounts ? sessionState.modelCounts : {},
+      sessionPromptCount: sessionState && sessionState.promptCount ? sessionState.promptCount : 0,
+      sessionSkillsUsed: sessionState && sessionState.skillsUsed ? sessionState.skillsUsed : {}
     };
-    return defaults[model] || "";
-  }
-
-  var cost = config.costEstimates[model];
-  return cost.label + " ($" + cost.inputPer1M + "/$" + cost.outputPer1M + " per 1M tokens in/out)";
+    fs.writeFileSync(io.getStatusPath(), JSON.stringify(status, null, 2));
+  } catch (err) {}
 }
 
 // ---- MAIN ANALYSIS ----
 
-function analyzeComplexity(prompt, config) {
-  // Check for manual override first
-  var override = detectManualOverride(prompt, config);
+function analyzeComplexity(prompt, config, cwd, sessionId) {
+  var override = scoring.detectManualOverride(prompt, config);
   if (override) {
-    var scoreMap = { haiku: 2, sonnet: 5, opus: 9 };
-    var levelMap = { haiku: "SIMPLE", sonnet: "MEDIUM", opus: "COMPLEX" };
     return {
-      score: scoreMap[override],
-      level: levelMap[override],
-      model: override,
-      override: true,
-      matchedCategory: "Manual override",
-      reason: "User requested " + override,
-      borderline: { isBorderline: false },
-      autoRoute: false
+      score: { haiku: 2, sonnet: 5, opus: 9 }[override],
+      level: { haiku: "SIMPLE", sonnet: "MEDIUM", opus: "COMPLEX" }[override],
+      model: override, override: true,
+      matchedCategory: "Manual override", reason: "User requested " + override,
+      borderline: { isBorderline: false }, autoRoute: false,
+      projectTypes: null, contextBoost: 0, stickiness: { sticky: false },
+      confidence: { confidence: 100, signals: 1, agreement: "high" },
+      patternMatch: null, detectedLanguage: "en", scores: null
+    };
+  }
+
+  var patterns = stats.loadPatterns();
+  var patternMatch = stats.checkPatterns(prompt.toLowerCase(), patterns);
+  if (patternMatch) {
+    return {
+      score: { haiku: 2, sonnet: 5, opus: 9 }[patternMatch.model],
+      level: { haiku: "SIMPLE", sonnet: "MEDIUM", opus: "COMPLEX" }[patternMatch.model],
+      model: patternMatch.model, override: false,
+      matchedCategory: patternMatch.label, reason: "Matched saved pattern: \"" + patternMatch.pattern + "\"",
+      borderline: { isBorderline: false }, autoRoute: true,
+      projectTypes: null, contextBoost: 0, stickiness: { sticky: false },
+      confidence: { confidence: 95, signals: 1, agreement: "high" },
+      patternMatch: patternMatch, detectedLanguage: "en", scores: null
     };
   }
 
@@ -397,32 +118,62 @@ function analyzeComplexity(prompt, config) {
   var words = prompt.split(/\s+/).filter(function(w) { return w.length > 0; });
   var wordCount = words.length;
 
-  var weights = (config && config.scoring && config.scoring.weights)
-    ? config.scoring.weights
-    : { keyword: 0.35, multiFile: 0.20, structure: 0.20, wordCount: 0.15, codeBlocks: 0.10 };
+  var detectedLanguage = scoring.detectLanguage(prompt);
 
-  var questionReduction = (config && config.scoring && config.scoring.questionReduction)
-    ? config.scoring.questionReduction
-    : 0.8;
+  var adaptiveResult = stats.getAdaptiveWeights(config);
+  var weights, usingAdaptive = false;
+  if (adaptiveResult && adaptiveResult.active) {
+    weights = adaptiveResult.weights;
+    usingAdaptive = true;
+  } else {
+    weights = (config && config.scoring && config.scoring.weights)
+      ? config.scoring.weights
+      : { keyword: 0.35, multiFile: 0.20, structure: 0.20, wordCount: 0.15, codeBlocks: 0.10 };
+  }
+  var questionReduction = (config && config.scoring && config.scoring.questionReduction) || 0.8;
 
-  var wordScore = scoreWordCount(wordCount);
-  var keywordResult = scoreKeywords(promptLower, config);
-  var codeBlockScore = scoreCodeBlocks(prompt);
-  var multiFileScore = scoreMultiFileIndicators(promptLower, config);
-  var structuralScore = scoreStructuralComplexity(prompt);
-  var taskType = classifyQuestionVsTask(promptLower);
+  var wordScore = scoring.scoreWordCount(wordCount);
+  var keywordResult = scoring.scoreKeywordsMultiLang(promptLower, config, detectedLanguage);
+  var codeBlockScore = scoring.scoreCodeBlocks(prompt);
+  var multiFileScore = scoring.scoreMultiFileIndicators(promptLower, config);
+  var structuralScore = scoring.scoreStructuralComplexity(prompt);
+  var taskType = scoring.classifyQuestionVsTask(promptLower);
+
+  var projectTypes = session.detectProjectType(cwd);
+  var contextBoost = session.getContextBoost(promptLower, projectTypes, config);
+
+  // Prompt history context: boost score if related to recent higher-complexity prompts
+  var historyBoost = session.getPromptHistoryBoost(prompt, sessionId, config);
+  if (historyBoost.boost > 0) contextBoost += historyBoost.boost;
+
+  var subScores = { keyword: keywordResult.score, wordCount: wordScore, codeBlocks: codeBlockScore, multiFile: multiFileScore, structure: structuralScore };
+  var confidence = scoring.calculateConfidence(subScores);
+
+  // Normalize scoring weights: sub-score weights + contextBoost weight must sum to 1.0
+  // contextBoost weight is configurable (default 0.10)
+  var contextBoostWeight = (config && config.scoring && config.scoring.weights && typeof config.scoring.weights.contextBoost === "number")
+    ? config.scoring.weights.contextBoost : 0.10;
+  // Clamp to [0, 0.5] and guard against NaN
+  if (isNaN(contextBoostWeight) || !isFinite(contextBoostWeight)) contextBoostWeight = 0.10;
+  contextBoostWeight = Math.max(0, Math.min(0.5, contextBoostWeight));
+  var targetSubScoreSum = 1.0 - contextBoostWeight;
+  var weightSum = (weights.keyword || 0) + (weights.wordCount || 0) + (weights.codeBlocks || 0) + (weights.multiFile || 0) + (weights.structure || 0);
+  var wNorm = (weightSum > 0 && Math.abs(weightSum - targetSubScoreSum) > 0.01) ? targetSubScoreSum / weightSum : 1.0;
 
   var rawScore = 0;
-  rawScore += wordScore * weights.wordCount;
-  rawScore += keywordResult.score * weights.keyword;
-  rawScore += codeBlockScore * weights.codeBlocks;
-  rawScore += multiFileScore * weights.multiFile;
-  rawScore += structuralScore * weights.structure;
+  rawScore += wordScore * (weights.wordCount || 0.15) * wNorm;
+  rawScore += keywordResult.score * (weights.keyword || 0.35) * wNorm;
+  rawScore += codeBlockScore * (weights.codeBlocks || 0.10) * wNorm;
+  rawScore += multiFileScore * (weights.multiFile || 0.20) * wNorm;
+  rawScore += structuralScore * (weights.structure || 0.20) * wNorm;
+  rawScore += contextBoost * contextBoostWeight;
 
-  if (taskType === "question" && rawScore > 3) {
-    rawScore *= questionReduction;
+  if (taskType === "question" && rawScore > 3) rawScore *= questionReduction;
+  // H1: NaN guard — prevent NaN from poisoning the entire pipeline
+  if (isNaN(rawScore) || !isFinite(rawScore)) {
+    process.stderr.write("[Model Router] ERROR: NaN/Infinity score detected (rawScore=" + rawScore + "), falling back to sonnet\n");
+    rawScore = 5;
   }
-
   var finalScore = Math.max(1, Math.min(10, Math.round(rawScore)));
 
   var level, model;
@@ -431,51 +182,75 @@ function analyzeComplexity(prompt, config) {
       level = "SIMPLE"; model = "haiku";
     } else if (config.models.sonnet && finalScore >= config.models.sonnet.scoreRange[0] && finalScore <= config.models.sonnet.scoreRange[1]) {
       level = "MEDIUM"; model = "sonnet";
-    } else {
-      level = "COMPLEX"; model = "opus";
-    }
+    } else { level = "COMPLEX"; model = "opus"; }
   } else {
     if (finalScore <= 3) { level = "SIMPLE"; model = "haiku"; }
     else if (finalScore <= 7) { level = "MEDIUM"; model = "sonnet"; }
     else { level = "COMPLEX"; model = "opus"; }
   }
 
-  if (keywordResult.matchedModel !== "none" && keywordResult.score > 0) {
-    model = keywordResult.matchedModel;
-    if (model === "haiku") {
-      level = "SIMPLE";
-      if (finalScore > 3) finalScore = Math.max(1, Math.min(3, Math.round(rawScore * 0.5)));
-    } else if (model === "sonnet") {
-      level = "MEDIUM";
-      if (finalScore < 4) finalScore = Math.max(4, Math.round(rawScore + 2));
-      if (finalScore > 7) finalScore = 7;
-    } else {
-      level = "COMPLEX";
-      if (finalScore < 8) finalScore = Math.max(8, Math.round(rawScore + 4));
+  // Keyword category influence — configurable strength
+  // "override" (default/legacy): keyword match forces model assignment
+  // "boost": keyword nudges score toward target range but doesn't force it
+  // "none": keywords only affect scoring weight, no model override
+  var keywordInfluence = (config && config.scoring && config.scoring.keywordInfluence) || "override";
+
+  if (keywordResult.matchedModel !== "none" && keywordResult.score > 0 && keywordInfluence !== "none") {
+    // Question reduction: cap keyword override at one level below target for questions
+    var effectiveMatchedModel = keywordResult.matchedModel;
+    if (taskType === "question" && keywordInfluence === "override") {
+      if (effectiveMatchedModel === "opus") effectiveMatchedModel = "sonnet";
+      else if (effectiveMatchedModel === "sonnet") effectiveMatchedModel = "haiku";
     }
-    finalScore = Math.max(1, Math.min(10, finalScore));
+    if (keywordInfluence === "override") {
+      model = effectiveMatchedModel;
+      if (model === "haiku") { level = "SIMPLE"; if (finalScore > 3) finalScore = Math.max(1, Math.min(3, Math.round(rawScore * 0.5))); }
+      else if (model === "sonnet") { level = "MEDIUM"; if (finalScore < 4) finalScore = Math.max(4, Math.round(rawScore + 2)); if (finalScore > 7) finalScore = 7; }
+      else { level = "COMPLEX"; if (finalScore < 8) finalScore = Math.max(8, Math.round(rawScore + 4)); }
+      finalScore = Math.max(1, Math.min(10, finalScore));
+    } else if (keywordInfluence === "boost") {
+      // Nudge score by +/-2 toward target range without forcing
+      var targetCenter = { haiku: 2, sonnet: 5, opus: 9 }[keywordResult.matchedModel] || 5;
+      var nudge = targetCenter > finalScore ? 2 : targetCenter < finalScore ? -2 : 0;
+      finalScore = Math.max(1, Math.min(10, finalScore + nudge));
+      // Re-derive model from adjusted score
+      if (config && config.models) {
+        if (config.models.haiku && finalScore >= config.models.haiku.scoreRange[0] && finalScore <= config.models.haiku.scoreRange[1]) { level = "SIMPLE"; model = "haiku"; }
+        else if (config.models.sonnet && finalScore >= config.models.sonnet.scoreRange[0] && finalScore <= config.models.sonnet.scoreRange[1]) { level = "MEDIUM"; model = "sonnet"; }
+        else { level = "COMPLEX"; model = "opus"; }
+      }
+    }
   }
 
-  // Borderline detection
-  var borderline = detectBorderline(finalScore, config);
-
-  // Auto mode detection
-  var autoRoute = shouldAutoRoute(finalScore, config);
+  var stickiness = session.getSessionStickiness(prompt, sessionId, model, config);
+  // Score delta guard: stickiness should not suppress large upgrades (>3 score difference)
+  var stickyModelCenter = { haiku: 2, sonnet: 5, opus: 9 };
+  if (stickiness.sticky && !scoring.shouldAutoRoute(finalScore, config, confidence.confidence)) {
+    var stickyCenter = stickyModelCenter[stickiness.stickyModel] || 5;
+    if (Math.abs(finalScore - stickyCenter) <= 3) {
+      model = stickiness.stickyModel;
+      level = { haiku: "SIMPLE", sonnet: "MEDIUM", opus: "COMPLEX" }[model] || level;
+    } else {
+      stickiness.sticky = false;
+      stickiness.reason = "Score delta too large (" + finalScore + " vs " + stickyCenter + "), overriding stickiness";
+    }
+  }
 
   return {
-    score: finalScore,
-    level: level,
-    model: model,
-    override: false,
+    score: finalScore, rawScore: Math.round(rawScore * 100) / 100, level: level, model: model, override: false,
     matchedCategory: keywordResult.matchedCategory,
-    reason: "Words: " + wordCount + " (" + wordScore + "), " +
-            "Keyword: " + keywordResult.matchedCategory + " (" + keywordResult.score + "), " +
-            "Code blocks: " + codeBlockScore + ", " +
-            "Multi-file: " + multiFileScore + ", " +
-            "Structure: " + structuralScore + ", " +
-            "Type: " + taskType,
-    borderline: borderline,
-    autoRoute: autoRoute
+    reason: "Words: " + wordCount + " (" + wordScore + "), Keyword: " + keywordResult.matchedCategory +
+            " (" + keywordResult.score + "), Code blocks: " + codeBlockScore + ", Multi-file: " + multiFileScore +
+            ", Structure: " + structuralScore + ", Type: " + taskType +
+            (contextBoost > 0 ? ", Context boost: +" + contextBoost : "") +
+            (usingAdaptive ? ", Adaptive weights: active" : "") +
+            (detectedLanguage !== "en" ? ", Language: " + detectedLanguage : ""),
+    borderline: scoring.detectBorderline(finalScore, config),
+    autoRoute: scoring.shouldAutoRoute(finalScore, config, confidence.confidence),
+    projectTypes: projectTypes, contextBoost: contextBoost,
+    stickiness: stickiness, confidence: confidence,
+    patternMatch: null, detectedLanguage: detectedLanguage, scores: subScores,
+    historyBoost: historyBoost
   };
 }
 
@@ -489,91 +264,292 @@ process.stdin.on("end", function() {
     var data = JSON.parse(input);
     var prompt = data.prompt || "";
     var cwd = data.cwd || process.cwd();
+    var sessionId = data.session_id || "unknown";
 
-    // Skip very short prompts
-    if (prompt.trim().length < 3) {
-      process.exit(0);
-    }
-
-    // Skip slash command invocations
+    if (prompt.trim().length < 3) { process.exit(0); }
     if (prompt.trim().startsWith("/")) {
-      process.exit(0);
-    }
-
-    // Special command: --stats (used by /stats command)
-    if (prompt.trim() === "--stats") {
-      var stats = getStats();
-      if (stats) {
-        process.stdout.write(JSON.stringify(stats, null, 2));
-      } else {
-        process.stdout.write("No usage data yet.");
+      var slashCmd = prompt.trim().split(/\s+/)[0].substring(1);
+      if (slashCmd.length > 0) {
+        var slashState = session.loadSessionState(sessionId) || { sessionId: sessionId };
+        if (!slashState.skillsUsed) slashState.skillsUsed = {};
+        slashState.skillsUsed[slashCmd] = (slashState.skillsUsed[slashCmd] || 0) + 1;
+        session.saveSessionState(slashState);
+        var slashSummary = sessionUtils.getSessionSummaryLine(slashState);
+        if (slashSummary) { process.stdout.write("[Model Router] " + slashSummary); }
       }
       process.exit(0);
     }
 
-    var config = loadConfig(cwd);
-    var result = analyzeComplexity(prompt, config);
+    // ---- Special commands (dispatch table) ----
+    var SPECIAL_COMMANDS = {
+      "--stats": function() {
+        var cfg = configModule.loadConfig(cwd);
+        var s = stats.getStats(cfg);
+        return s ? JSON.stringify(s, null, 2) : "No usage data yet.";
+      },
+      "--tune": function() {
+        var t = stats.getTuneAnalysis();
+        return t ? JSON.stringify(t, null, 2) : "No override data yet.";
+      },
+      "--quality-stats": function() {
+        var qs = stats.getQualityStats();
+        return qs ? JSON.stringify(qs, null, 2) : "No quality data yet. Use /rate <1-5> after tasks.";
+      },
+      "--fallback-stats": function() {
+        try {
+          var fbPath = io.getFallbackLogPath();
+          if (!fs.existsSync(fbPath)) return "No fallback events logged yet.";
+          var fbLines = fs.readFileSync(fbPath, "utf8").trim().split("\n").filter(function(l) { return l.length > 0; });
+          return "Fallback events: " + fbLines.length + "\n" + fbLines.slice(-10).join("\n");
+        } catch (e) { return "No fallback data."; }
+      },
+      "--adaptive-stats": function() {
+        var adCfg = configModule.loadConfig(cwd);
+        return JSON.stringify(stats.getAdaptiveStats(adCfg), null, 2);
+      },
+      "--health": function() {
+        var report = health.getFullHealthReport();
+        return JSON.stringify(report, null, 2);
+      },
+      "--auto-tune": function() {
+        var cfg = configModule.loadConfig(cwd);
+        var report = autoTune.runAutoTune(cfg, false);
+        return JSON.stringify(report, null, 2);
+      },
+      "--auto-tune-dry": function() {
+        var cfg = configModule.loadConfig(cwd);
+        var report = autoTune.runAutoTune(cfg, true);
+        return JSON.stringify(report, null, 2);
+      }
+    };
 
-    // Log usage
-    if (!config || !config.logging || config.logging.enabled !== false) {
-      logUsage({
-        timestamp: new Date().toISOString(),
-        score: result.score,
-        level: result.level,
-        model: result.model,
-        category: result.matchedCategory,
-        override: result.override,
-        borderline: result.borderline.isBorderline,
-        autoRouted: result.autoRoute,
-        promptPreview: prompt.substring(0, 80).replace(/\n/g, " ")
+    var trimmedPrompt = prompt.trim();
+    if (SPECIAL_COMMANDS[trimmedPrompt]) {
+      process.stdout.write(SPECIAL_COMMANDS[trimmedPrompt]());
+      process.exit(0);
+    }
+    if (trimmedPrompt === "--session-summary") {
+      var sumState = session.loadSessionState(sessionId);
+      if (sumState && sumState.modelCounts) {
+        var mc = sumState.modelCounts;
+        var total = (mc.haiku || 0) + (mc.sonnet || 0) + (mc.opus || 0);
+        var subCounts = sumState.subagentCounts || { haiku: 0, sonnet: 0, opus: 0 };
+        var totalSub = (subCounts.haiku || 0) + (subCounts.sonnet || 0) + (subCounts.opus || 0);
+        process.stdout.write(JSON.stringify({
+          sessionId: sessionId, promptCount: total, modelCounts: mc,
+          subagentCounts: subCounts, totalSubagents: totalSub,
+          modelPercentages: { haiku: total > 0 ? Math.round((mc.haiku || 0) / total * 100) : 0, sonnet: total > 0 ? Math.round((mc.sonnet || 0) / total * 100) : 0, opus: total > 0 ? Math.round((mc.opus || 0) / total * 100) : 0 },
+          skillsUsed: sumState.skillsUsed || {}, sessionStart: sumState.sessionStart || null, estimatedTokensUsed: sumState.estimatedTokensUsed || 0
+        }, null, 2));
+      } else { process.stdout.write("No session data yet."); }
+      process.exit(0);
+    }
+
+    var overrideMatch = prompt.trim().match(/^--log-override\s+(\w+)\s+(\w+)\s+(.+)$/);
+    if (overrideMatch) {
+      io.logOverride({ timestamp: new Date().toISOString(), recommendedModel: overrideMatch[1], chosenModel: overrideMatch[2], category: overrideMatch[3] });
+      process.stdout.write("Override logged."); process.exit(0);
+    }
+    var fallbackMatch = prompt.trim().match(/^--log-fallback\s+(\w+)\s+(\w+)\s+(.+)$/);
+    if (fallbackMatch) {
+      io.logFallback({ timestamp: new Date().toISOString(), fromModel: fallbackMatch[1], toModel: fallbackMatch[2], reason: fallbackMatch[3] });
+      process.stdout.write("Fallback logged."); process.exit(0);
+    }
+
+    // ---- Dry run mode (A6) ----
+    var isDryRun = false;
+    if (prompt.trim().startsWith("--dry-run ")) { isDryRun = true; prompt = prompt.trim().substring("--dry-run ".length); }
+
+    // ---- Main analysis ----
+    var config = configModule.loadConfig(cwd);
+    var safeMode = config && config.safeMode === true;
+    var result = analyzeComplexity(prompt, config, cwd, sessionId);
+
+    var contextUsage = contextMonitor.estimateContextUsage(sessionId, prompt, config, session.loadSessionState);
+    var contextRec = contextMonitor.getContextRecommendation(contextUsage, result.model, config, session.loadSessionState);
+    if (contextRec.adjusted) {
+      result.model = contextRec.model;
+      result.level = { haiku: "SIMPLE", sonnet: "MEDIUM", opus: "COMPLEX" }[result.model];
+    }
+
+    var apiLimits = monitors.checkApiRateLimits(config, sessionId, session.loadSessionState);
+    if (apiLimits && apiLimits.action === "force_haiku" && result.model !== "haiku") { result.model = "haiku"; result.level = "SIMPLE"; }
+    else if (apiLimits && apiLimits.action === "prefer_cheaper" && result.model === "opus") { result.model = "sonnet"; result.level = "MEDIUM"; }
+
+    var budget = monitors.checkBudget(result.model, config);
+    var rateLimit = monitors.checkRateLimit(config, sessionId, session.loadSessionState);
+    var anomalies = monitors.detectAnomalies(config);
+    var qualityWarning = stats.getQualityWarning(result.model, result.matchedCategory);
+
+    if (result.confidence.confidence < 40) result.autoRoute = false;
+    if (safeMode) result.autoRoute = false;
+    if (!budget.withinBudget) result.autoRoute = false;
+    if (rateLimit && !rateLimit.allowed) result.autoRoute = false;
+
+    if (!isDryRun && (!config || !config.logging || config.logging.enabled !== false)) {
+      io.logUsage({
+        timestamp: new Date().toISOString(), score: result.score, rawScore: result.rawScore,
+        level: result.level, model: result.model,
+        category: result.matchedCategory, override: result.override, borderline: result.borderline.isBorderline,
+        autoRouted: result.autoRoute, projectTypes: result.projectTypes, contextBoost: result.contextBoost,
+        confidence: result.confidence.confidence, detectedLanguage: result.detectedLanguage,
+        scores: result.scores, promptPreview: prompt.substring(0, 80).replace(/\n/g, " ")
       });
     }
 
-    // Build the context message
+    if (!isDryRun) monitors.recordApiCall(sessionId, result.model, config, session.loadSessionState, session.saveSessionState);
+
+    var updatedState = contextMonitor.updateContextTracking(sessionId, prompt, result.model, config, session.loadSessionState) || {};
+    updatedState.sessionId = sessionId;
+    updatedState.lastModel = result.model;
+    updatedState.topicWords = session.extractTopicWords(prompt);
+    session.updatePromptHistory(updatedState, prompt, result.model, result.matchedCategory);
+    updatedState.timestamp = new Date().toISOString();
+    if (result.autoRoute) {
+      if (!updatedState.recentAutoRoutes) updatedState.recentAutoRoutes = [];
+      updatedState.recentAutoRoutes.push({ timestamp: new Date().toISOString(), model: result.model });
+      if (updatedState.recentAutoRoutes.length > 20) updatedState.recentAutoRoutes = updatedState.recentAutoRoutes.slice(-20);
+    }
+    if (!isDryRun) session.saveSessionState(updatedState);
+    if (!isDryRun) writeStatusFile(result, contextUsage, budget, anomalies, apiLimits, updatedState);
+
+    // ---- Build output ----
     var lines = [];
-    var costInfo = getCostEstimate(result.model, config);
 
-    lines.push("[Model Router] Complexity: " + result.level + " (score " + result.score + "/10) -> Recommended: " + result.model);
-
-    if (result.override) {
-      lines.push("Override: User explicitly requested " + result.model + ".");
-    } else {
-      lines.push("Matched category: \"" + result.matchedCategory + "\"");
-      lines.push("Analysis: " + result.reason);
+    var sessionSummaryLines = sessionUtils.getSessionSummaryLines(updatedState);
+    if (sessionSummaryLines && sessionSummaryLines.length > 0) {
+      lines.push("========== MANDATORY STATS DISPLAY ==========");
+      lines.push("COPY THESE EXACT LINES AS THE LAST LINES OF YOUR RESPONSE:");
+      var emojis = ["\ud83d\udcca", "\ud83d\udd0b", "\ud83d\udcc8", "\ud83d\udcca"];
+      for (var si = 0; si < sessionSummaryLines.length; si++) {
+        lines.push((emojis[si] || "\ud83d\udcc8") + " " + sessionSummaryLines[si]);
+      }
+      lines.push("==============================================");
+      lines.push("");
     }
 
-    // Cost estimate
-    lines.push("Cost: " + costInfo);
+    // H4: Warn user visibly if config is corrupt
+    if (!config) {
+      lines.push("[Model Router] WARNING: Config file corrupt or missing. Using default routing.");
+    }
 
-    // Borderline warning
-    if (result.borderline.isBorderline) {
-      lines.push("BORDERLINE: Score " + result.score + " is on the " + result.borderline.between + " boundary. Both " + result.borderline.lower + " and " + result.borderline.upper + " could work here.");
+    var costInfo = scoring.getCostEstimate(result.model, config);
+    if (isDryRun) lines.push("[DRY RUN] ");
+    lines.push("[Model Router] Complexity: " + result.level + " (score " + result.score + "/10) -> Recommended: " + result.model);
+
+    if (result.override) { lines.push("Override: User explicitly requested " + result.model + "."); }
+    else if (result.patternMatch) { lines.push("Matched pattern: \"" + result.patternMatch.pattern + "\" -> " + result.model); }
+    else { lines.push("Matched category: \"" + result.matchedCategory + "\""); lines.push("Analysis: " + result.reason); }
+
+    lines.push("Cost: " + costInfo);
+    lines.push("Confidence: " + result.confidence.confidence + "% (" + result.confidence.signals + " signals, " + result.confidence.agreement + " agreement)");
+
+    if (result.detectedLanguage && result.detectedLanguage !== "en") {
+      var langNames = { hu: "Hungarian", de: "German" };
+      lines.push("Language: " + (langNames[result.detectedLanguage] || result.detectedLanguage) + " detected");
+    }
+
+    if (contextUsage) {
+      lines.push("Context window: ~" + contextUsage.percentage + "% estimated (" + Math.round(contextUsage.estimatedUsed / 1000) + "K/" + Math.round(contextUsage.maxTokens / 1000) + "K tokens)");
+      if (contextRec.adjusted) lines.push(contextRec.reason);
+      if (contextRec.compactWarning) lines.push(contextRec.compactWarning);
+    }
+
+    if (result.projectTypes && result.projectTypes.length > 0) {
+      lines.push("Project context: " + result.projectTypes.join(", ") + (result.contextBoost > 0 ? " (boost: +" + result.contextBoost + ")" : ""));
+    }
+    if (result.stickiness.sticky) lines.push("Session continuity: " + result.stickiness.reason + " -> staying on " + result.stickiness.stickyModel);
+    if (result.historyBoost && result.historyBoost.boost > 0) lines.push("Prompt history: " + result.historyBoost.reason + " (boost: +" + result.historyBoost.boost + ")");
+    if (result.borderline.isBorderline) lines.push("BORDERLINE: Score " + result.score + " is on the " + result.borderline.between + " boundary.");
+    if (budget.warning) lines.push(budget.warning);
+    if (rateLimit && rateLimit.warning) lines.push(rateLimit.warning);
+    if (apiLimits && apiLimits.warning) lines.push(apiLimits.warning);
+    if (anomalies && anomalies.length > 0) anomalies.forEach(function(a) { lines.push(a.message); });
+    if (safeMode) lines.push("SAFE MODE: All routing requires confirmation.");
+    if (qualityWarning) lines.push("QUALITY WARNING: " + qualityWarning.model + "+" + qualityWarning.category + " avg " + qualityWarning.avg + "/5 (" + qualityWarning.count + " ratings). " + qualityWarning.action);
+
+    // GSD-inspired: Goal-backward verification (auto-tune suggestions)
+    if (!result.override && config && (!config.goalVerification || config.goalVerification.enabled !== false)) {
+      var tuneSuggestions = stats.getAutoTuneSuggestions(config);
+      if (tuneSuggestions) {
+        tuneSuggestions.forEach(function(s) {
+          lines.push("GOAL CHECK: " + s.suggestion + " (avg " + s.avgRating + "/5, " + s.count + " ratings)");
+        });
+      }
+    }
+
+    // Periodic auto-tune: every 50 prompts, check for reclassifications and keyword discoveries
+    if (updatedState.promptCount && updatedState.promptCount % 50 === 0 && !isDryRun) {
+      var tuneReport = autoTune.runAutoTune(config, true); // dry run
+      if (tuneReport.reclassifications.length > 0) {
+        tuneReport.reclassifications.forEach(function(r) {
+          lines.push("AUTO-TUNE: Category \"" + r.category + "\" overridden to " + r.targetModel + " " + r.percentage + "% of the time (" + r.overrideCount + "x). Run /auto-tune to apply.");
+        });
+      }
+      if (tuneReport.keywordSuggestions.length > 0) {
+        lines.push("KEYWORD DISCOVERY: " + tuneReport.keywordSuggestions.length + " new keyword(s) found. Top: \"" +
+          tuneReport.keywordSuggestions.slice(0, 3).map(function(k) { return k.ngram + "\" -> " + k.model; }).join(", \"") +
+          ". Run /auto-tune for details.");
+      }
+    }
+
+    // GSD-inspired: Pre-flight check for opus tasks
+    var preflight = scoring.preflightCheck(prompt, result.score, result.model, config);
+    if (!preflight.ready) {
+      lines.push("PREFLIGHT: Opus task detected. Consider adding: " + preflight.suggestions.join("; "));
+    }
+
+    // GSD-inspired: Task splitting recommendation
+    var taskSplit = contextMonitor.getTaskSplitRecommendation(contextUsage, result.score, result.model, config);
+    if (taskSplit) {
+      lines.push(taskSplit.suggestion);
     }
 
     lines.push("");
 
-    // Auto mode vs suggest mode
-    if (result.autoRoute && !result.override) {
+    if (isDryRun) {
+      lines.push("[DRY RUN] No routing action taken. This was a test analysis only.");
+    } else if (result.autoRoute && !result.override) {
       lines.push("AUTO-ROUTING: High confidence score (" + result.score + "/10). Automatically delegate this task to the **" + result.model + "-worker** agent without asking. Just do it.");
       lines.push("If the task is trivially simple (like a direct question), you may answer directly without delegating.");
     } else if (result.borderline.isBorderline) {
-      lines.push("ROUTING SUGGESTION (BORDERLINE): This task scored " + result.score + "/10, near the " + result.borderline.between + " boundary.");
-      lines.push("Ask the user: \"This is a borderline task (score " + result.score + "/10, category: " + result.matchedCategory + ") between **" + result.borderline.lower + "** and **" + result.borderline.upper + "**. Which model should I use?\"");
-      lines.push("If the user confirms the recommended model or says yes, delegate to " + result.model + "-worker.");
-      lines.push("If the user chooses a different model, use that model's worker agent instead.");
+      // GSD-inspired: Enhanced borderline with historical context
+      var borderCtx = scoring.getBorderlineContext(result.score, result.matchedCategory, config);
+      if (borderCtx && borderCtx.canAutoResolve && result.confidence.confidence >= 40) {
+        lines.push("BORDERLINE AUTO-RESOLVED: Score " + result.score + "/10 (" + result.borderline.between + "), but historical data (" + borderCtx.totalHistorical + " uses) strongly favors **" + borderCtx.autoResolveModel + "**.");
+        lines.push("Automatically delegate to **" + borderCtx.autoResolveModel + "-worker**.");
+      } else {
+        lines.push("ROUTING (BORDERLINE): Score " + result.score + "/10, near " + result.borderline.between + " boundary.");
+        if (borderCtx) {
+          var histInfo = "History: " + borderCtx.totalHistorical + " uses of \"" + result.matchedCategory + "\" -> " +
+            Object.keys(borderCtx.modelDistribution).map(function(m) { return m + ":" + borderCtx.modelDistribution[m]; }).join(", ");
+          if (borderCtx.qualityData) {
+            histInfo += " | Quality: " + Object.keys(borderCtx.qualityData).map(function(m) {
+              var d = borderCtx.qualityData[m]; return m + " " + (d.sum / d.count).toFixed(1) + "/5";
+            }).join(", ");
+          }
+          lines.push(histInfo);
+        }
+        lines.push("Ask the user: \"Borderline task (score " + result.score + "/10, category: " + result.matchedCategory + ") between **" + result.borderline.lower + "** and **" + result.borderline.upper + "**. Which model?\"");
+        lines.push("When the user chooses, delegate to the chosen model's worker. Also log the override if they pick a different model than recommended.");
+      }
     } else {
-      lines.push("ROUTING SUGGESTION: This task is rated " + result.level + " complexity.");
-      lines.push("Before proceeding, ask the user: \"This looks like a " + result.level.toLowerCase() + " complexity task (score " + result.score + "/10, category: " + result.matchedCategory + "). Shall I route this to the **" + result.model + "-worker** agent for " + (result.model === "haiku" ? "fast" : result.model === "sonnet" ? "balanced" : "thorough") + " handling, or would you prefer a different model (haiku/sonnet/opus)?\"");
-      lines.push("If the user confirms or says yes, delegate the task to the " + result.model + "-worker agent using the Agent tool.");
-      lines.push("If the user chooses a different model, use that model's worker agent instead.");
+      lines.push("ROUTING: " + result.level + " complexity (score " + result.score + "/10).");
+      lines.push("Ask: \"" + result.level + " task (score " + result.score + "/10, category: " + result.matchedCategory + "). Route to **" + result.model + "-worker** for " + ({ haiku: "fast", sonnet: "balanced", opus: "thorough" }[result.model] || "balanced") + " handling? Or prefer haiku/sonnet/opus?\"");
+      lines.push("If confirmed, delegate to " + result.model + "-worker. If different model chosen, use that worker instead and note the override for /tune.");
       lines.push("If the task is trivially simple (like a direct question), you may answer directly without delegating.");
+    }
+
+    if (config && config.promptHints && config.promptHints.enabled && config.promptHints.hints) {
+      var hint = config.promptHints.hints[result.model];
+      if (hint) { lines.push(""); lines.push(hint); }
     }
 
     process.stdout.write(lines.join("\n"));
     process.exit(0);
 
   } catch (err) {
-    // On any error, silently allow the prompt through
+    process.stderr.write("[Model Router] Error: " + (err.message || err) + "\n");
     process.exit(0);
   }
 });
