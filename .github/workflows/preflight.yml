@@ -108,3 +108,48 @@ jobs:
             }
             console.log('marketplace.json OK - name:', m.name, '| plugins:', m.plugins.length);
           "
+
+      - name: Verify version sync (plugin.json is the source of truth)
+        run: |
+          node -e "
+            var fs = require('fs');
+            var truth = require('./.claude-plugin/plugin.json').version;
+            console.log('Source of truth (.claude-plugin/plugin.json):', truth);
+            var checks = [
+              {
+                file: 'package.json',
+                actual: require('./package.json').version
+              },
+              {
+                file: '.claude-plugin/marketplace.json (plugins[0].version)',
+                actual: require('./.claude-plugin/marketplace.json').plugins[0].version
+              },
+              {
+                file: 'dist/README.md heading',
+                actual: (fs.readFileSync('./dist/README.md', 'utf8').match(/^# .* v(\d+\.\d+\.\d+) /m) || [])[1]
+              },
+              {
+                file: 'scripts/install-plugin.js (must NOT hardcode version)',
+                actual: 'reads from plugin.json',
+                isHardcoded: /var PLUGIN_VERSION = \"\d+\.\d+\.\d+\"/.test(fs.readFileSync('./scripts/install-plugin.js', 'utf8'))
+              }
+            ];
+            var fail = false;
+            checks.forEach(function(c) {
+              if (c.isHardcoded) {
+                console.error('  FAIL ' + c.file + ' - PLUGIN_VERSION is still hardcoded; must read from plugin.json');
+                fail = true;
+              } else if (c.actual && c.actual !== truth && c.actual !== 'reads from plugin.json') {
+                console.error('  FAIL ' + c.file + ' = ' + c.actual + ' (expected ' + truth + ')');
+                fail = true;
+              } else {
+                console.log('  OK   ' + c.file + ' = ' + c.actual);
+              }
+            });
+            if (fail) {
+              console.error('');
+              console.error('Version mismatch. Update all files to match .claude-plugin/plugin.json (' + truth + ')');
+              process.exit(1);
+            }
+            console.log('All versions in sync');
+          "
