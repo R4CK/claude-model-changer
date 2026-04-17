@@ -32,6 +32,8 @@ var session = require("./lib/session");
 var sessionUtils = require("./session-utils");
 var health = require("./lib/health");
 var autoTune = require("./lib/auto-tune");
+var llmClassifier = require("./lib/llm-classifier");
+var learnLog = require("./lib/learn-log");
 
 // Startup cleanup: rotate debug log + trim all JSONL logs
 io.rotateDebugLog();
@@ -380,6 +382,44 @@ process.stdin.on("end", function() {
     var rateLimit = monitors.checkRateLimit(config, sessionId, session.loadSessionState);
     var anomalies = monitors.detectAnomalies(config);
     var qualityWarning = stats.getQualityWarning(result.model, result.matchedCategory);
+
+    // ---- LLM fallback (v2.4.0) ----
+    // When the deterministic scorer is uncertain (low confidence or no
+    // keyword match), optionally call Claude Haiku to classify the prompt
+    // and learn what keywords future prompts of this type might contain.
+    // Opt-in via config.autoMode.llmFallback.enabled. Requires
+    // ANTHROPIC_API_KEY env. Always degrades gracefully.
+    var llmFallbackUsed = false;
+    var llmConfig = config && config.autoMode && config.autoMode.llmFallback;
+    var deterministicLowConfidence = (result.confidence.confidence < 40) ||
+                                     (result.matchedCategory === "none");
+    if (!isDryRun && llmConfig && llmConfig.enabled && deterministicLowConfidence && !result.override) {
+      try {
+        var llmResult = llmClassifier.classify(prompt, llmConfig);
+        if (llmResult && llmResult.model) {
+          // LLM result overrides deterministic
+          result.model = llmResult.model;
+          result.matchedCategory = "[LLM] " + llmResult.category;
+          result.confidence.confidence = Math.max(result.confidence.confidence, llmResult.confidence || 75);
+          result.level = { haiku: "SIMPLE", sonnet: "MEDIUM", opus: "COMPLEX" }[llmResult.model];
+          llmFallbackUsed = true;
+          // Log the suggestion for future config updates via /learn
+          learnLog.appendSuggestion({
+            prompt: prompt,
+            suggestedCategory: llmResult.category,
+            suggestedKeywords: llmResult.suggestedKeywords,
+            suggestedModel: llmResult.model,
+            llmConfidence: llmResult.confidence,
+            llmModel: llmResult.modelUsed,
+            latencyMs: llmResult.latencyMs
+          });
+        }
+      } catch (e) {
+        // Never break the hook because of LLM call. Fall through to
+        // deterministic decision.
+      }
+    }
+    result.llmFallbackUsed = llmFallbackUsed;
 
     if (result.confidence.confidence < 40) result.autoRoute = false;
     if (safeMode) result.autoRoute = false;

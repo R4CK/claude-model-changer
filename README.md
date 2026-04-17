@@ -4,7 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D16-brightgreen)](package.json)
-[![Plugin Version](https://img.shields.io/badge/plugin-v5.3.3-blue)](.claude-plugin/plugin.json)
+[![Plugin Version](https://img.shields.io/badge/plugin-v2.4.0-blue)](.claude-plugin/plugin.json)
 
 ---
 
@@ -153,6 +153,7 @@ Edit `config/task-routing.json` to add your own categories or move keywords betw
 | `/route <model> <task>` | Manual override |
 | `/rate <1-5>` | Rate the last routing decision (feeds the auto-tuner) |
 | `/tune` | Get suggestions to improve your routing config |
+| `/learn` | Review LLM-fallback classification suggestions and keyword candidates |
 | `/health` | Plugin self-diagnostics |
 
 ### Manual override (any prompt)
@@ -206,13 +207,40 @@ This forces opus for critical-path keywords *only in this project*, and disables
     "haiku": [1, 2],
     "opus":  [9, 10]
   },
-  "borderlineZones": [3, 4, 7, 8]
+  "borderlineZones": [3, 4, 7, 8],
+  "llmFallback": {
+    "enabled": false,
+    "model": "claude-haiku-4-5",
+    "timeoutMs": 8000,
+    "maxTokens": 200
+  }
 }
 ```
 
 - `autoThresholds`: score ranges that auto-delegate without asking
 - `borderlineZones`: scores that trigger a confirmation prompt with both options
 - `enabled: false` → always ask, never auto-route
+
+### LLM-fallback classifier (opt-in, v2.4.0+)
+
+When the deterministic scorer can't classify a prompt confidently
+(`confidence < 40` or no keyword match), the plugin can optionally fall back
+to **Claude Haiku** for a semantic classification. The result both overrides
+the deterministic decision AND is logged to `logs/learn-suggestions.jsonl` so
+you can grow your keyword config over time via `/learn`.
+
+**To enable:**
+1. Set `ANTHROPIC_API_KEY` (or `CLAUDE_API_KEY`) in your environment
+2. In `config/task-routing.json`, set `autoMode.llmFallback.enabled = true`
+3. Restart Claude Code
+
+**Cost:** ~$0.0002 per fallback (Haiku is cheap). 100 unmatched prompts/day
+≈ $0.02/day per user. The fast deterministic path covers ~90%+ of prompts at
+zero cost.
+
+**Failure modes:** missing API key, network error, timeout, or malformed
+response → silently falls back to the deterministic decision. The hook never
+breaks because of LLM issues.
 
 ---
 

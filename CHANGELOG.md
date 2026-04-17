@@ -1,5 +1,48 @@
 # Changelog
 
+## v2.4.0
+
+### New feature: LLM-fallback classification (opt-in)
+
+When the deterministic scorer cannot classify a prompt confidently
+(`confidence < 40` OR no keyword match), the plugin can now optionally fall
+back to **Claude Haiku** for a semantic classification. The result both
+overrides the deterministic decision AND is logged to
+`logs/learn-suggestions.jsonl` so the user can review and grow their keyword
+config over time.
+
+**Architecture:** hybrid. The fast deterministic scorer remains the primary
+path (covers ~90%+ of prompts at zero cost). The LLM is only invoked for the
+hard cases.
+
+**Cost:** ~$0.0002 per fallback (Haiku). 100 unmatched prompts/day ≈ $0.02/day
+per user.
+
+**Opt-in:** disabled by default. To enable:
+1. Set `ANTHROPIC_API_KEY` (or `CLAUDE_API_KEY`) in your environment
+2. In `config/task-routing.json`, set `autoMode.llmFallback.enabled = true`
+3. Restart Claude Code
+
+**Files added:**
+- `scripts/lib/llm-classifier.js` - Haiku API caller with sync wrapper
+- `scripts/lib/llm-classifier-helper.js` - sync child process for the HTTPS request
+- `scripts/lib/learn-log.js` - append-only log of LLM suggestions
+- `scripts/show-learn-suggestions.js` - backing script for the new `/learn` slash command
+- `commands/learn.md` - the `/learn` command definition
+
+**Behavior:**
+- Hook always degrades gracefully: missing API key, network error, timeout,
+  malformed response → silently falls back to the deterministic decision
+- LLM call has an 8-second timeout (configurable via `llmFallback.timeoutMs`)
+- Suggestions log auto-trims to 500 entries; `/learn` shows top categories,
+  top keywords, and the recent 10 entries
+
+### Version sync
+All version numbers consolidated under **2.4.0** (was: plugin.json 2.3.0,
+package.json 2.3.0, marketplace.json plugin entry 2.3.0). `plugin.json`
+remains the single source of truth; `install-plugin.js` reads from it at
+runtime; CI enforces consistency.
+
 ## v2.3.0
 
 ### Distribution

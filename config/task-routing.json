@@ -410,6 +410,13 @@
         10
       ]
     },
+    "llmFallback": {
+      "enabled": false,
+      "model": "claude-haiku-4-5",
+      "timeoutMs": 8000,
+      "maxTokens": 200,
+      "_comment": "Opt-in LLM fallback. When the deterministic scorer's confidence is < 40 OR no keyword matches, calls Claude Haiku to classify the prompt and logs the suggestion for /learn review. Requires ANTHROPIC_API_KEY env. Cost: ~$0.0002 per fallback. Set enabled: true to activate."
+    },
     "borderlineZones": [
       3,
       4,
