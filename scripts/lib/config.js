@@ -30,6 +30,18 @@ function loadConfig(cwd) {
     _configCache["__configCorrupt__"] = true;
   }
 
+  // Merge in learned-keywords.json (per-user, gitignored, auto-applied
+  // suggestions from LLM-fallback). Comes BETWEEN base and project so
+  // project-level overrides remain authoritative.
+  try {
+    var learnedPath = io.getLearnedConfigPath();
+    if (fs.existsSync(learnedPath)) {
+      var learnedRaw = fs.readFileSync(learnedPath, "utf8").replace(/^\uFEFF/, "");
+      var learned = JSON.parse(learnedRaw);
+      baseConfig = deepMerge(baseConfig || {}, learned);
+    }
+  } catch (err) { /* ignore - learned config is optional */ }
+
   if (cwd) {
     var projectConfigPath = path.join(cwd, ".claude", "model-routing.json");
     try {

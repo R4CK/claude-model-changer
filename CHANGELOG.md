@@ -41,7 +41,57 @@ Claude Code subagent usage - no separate API key, no separate billing.
 - All real LLM work is done by Claude in-context using Task tool with
   subagent_type="haiku-worker"
 - Suggestions log auto-trims to 500 entries; `/learn` shows top categories,
-  top keywords, and the recent 10 entries
+  top keywords, auto-applied count, and the recent 10 entries
+
+### Multi-language support in LLM fallback
+
+The hook detects user prompt language (en / hu / de) and instructs Claude
+to ask haiku-worker to suggest keywords IN THE USER'S LANGUAGE. The
+`--log-llm-suggestion` command takes a `<lang>` parameter and routes
+keywords to the right place:
+- `en` -> `models.<model>.categories.<key>.keywords` (English keywords)
+- `hu` -> `translations.hu.<key>` (Hungarian keyword array)
+- `de` -> `translations.de.<key>` (German keyword array)
+
+This matches the existing multi-language structure of `task-routing.json`
+(189 English + ~80 Hungarian + ~80 German keywords today).
+
+### Tier 2 auto-apply: per-user learned keywords
+
+When `learn.autoApply.enabled = true` AND a keyword has been suggested
+N+ times (default 5), the hook auto-appends it to a per-user
+`logs/learned-keywords.json` file. This file is gitignored AND
+deep-merged into the runtime config by `lib/config.js`, so the keyword
+takes effect IMMEDIATELY on the next prompt.
+
+The shared `task-routing.json` stays clean and reviewed - per-user
+adaptations live separately. To share learned keywords across machines
+or with teammates, run `/learn --promote` to get a diff that can be
+incorporated into `task-routing.json` via a PR (which the CI will
+validate).
+
+**New config:**
+```json
+"learn": {
+  "autoApply": {
+    "enabled": false,
+    "minOccurrences": 5
+  }
+}
+```
+
+**New files (in addition to v2.4.0 base):**
+- `scripts/lib/learned-config.js` - manage learned-keywords.json
+- new `--learn-promote` special command and `--promote` flag on
+  `show-learn-suggestions.js`
+
+**Modified:**
+- `scripts/lib/io.js` - new `getLearnedConfigPath()`
+- `scripts/lib/config.js` - deep-merges learned-keywords.json between
+  base and project override
+- `scripts/lib/learn-log.js` - persists `lang` field on every suggestion
+- `commands/learn.md` - documents `--promote` mode
+- `.gitignore` - excludes `logs/learned-keywords.json`
 
 ### Version sync
 All version numbers consolidated under **2.4.0** (was: plugin.json 2.3.0,

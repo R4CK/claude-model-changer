@@ -887,6 +887,13 @@
     "poorThreshold": 2.5,
     "autoApply": false
   },
+  "learn": {
+    "autoApply": {
+      "enabled": false,
+      "minOccurrences": 5,
+      "_comment": "When LLM-fallback suggests the same keyword N+ times (default 5), auto-add it to logs/learned-keywords.json (per-user, gitignored). The runtime config loader deep-merges learned-keywords.json into task-routing.json so the keyword takes effect immediately. To share keywords across machines/teams, run /learn-promote and add the diff to task-routing.json via PR."
+    }
+  },
   "preflight": {
     "enabled": true,
     "opusMinWords": 20,
