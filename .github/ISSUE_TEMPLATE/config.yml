@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Discussions
+    url: https://github.com/R4CK/claude-model-changer/discussions
+    about: Open-ended questions, design discussions, "how do I" questions, ideas without a concrete proposal
+  - name: Documentation
+    url: https://github.com/R4CK/claude-model-changer#readme
+    about: Installation, configuration, commands, troubleshooting (read first - many questions are answered here)
+  - name: Contributing guide
+    url: https://github.com/R4CK/claude-model-changer/blob/main/CONTRIBUTING.md
+    about: Local dev setup, testing requirements, PR workflow
