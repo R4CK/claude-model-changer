@@ -11,6 +11,9 @@ logs/*.md
 **/.preflight-cache.json
 **/.write-probe
 
+# LLM-fallback learn suggestions (per-user usage data)
+logs/learn-suggestions.jsonl
+
 # Dependencies
 node_modules/
 

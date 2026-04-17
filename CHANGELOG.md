@@ -1,5 +1,54 @@
 # Changelog
 
+## v2.4.0
+
+### New feature: LLM-fallback classification via the haiku-worker subagent (opt-in)
+
+When the deterministic scorer cannot classify a prompt confidently
+(`confidence < 40` OR no keyword match), the hook now outputs a structured
+**instruction to Claude** to use the existing **`haiku-worker` subagent**
+(shipped with this plugin) to classify the prompt before routing.
+
+**Architecture: hook-driven, Claude-executed.** The hook itself does NOT
+make any network calls or use any API keys. It outputs a text instruction
+that Claude reads and acts on, using the same `Task`-tool / subagent
+infrastructure the plugin already uses for routing. After Claude gets the
+classification from haiku-worker, it (a) routes the user's actual task to
+the model haiku-worker chose, and (b) logs the classification back via the
+new `--log-llm-suggestion` special command.
+
+**Cost:** zero extra. The Haiku usage counts against the user's normal
+Claude Code subagent usage - no separate API key, no separate billing.
+
+**Opt-in:** disabled by default. To enable:
+1. In `config/task-routing.json`, set `autoMode.llmFallback.enabled = true`
+2. Restart Claude Code
+
+**Files added:**
+- `scripts/lib/learn-log.js` - append-only log of LLM suggestions
+- `scripts/show-learn-suggestions.js` - backing script for the new `/learn` slash command
+- `commands/learn.md` - the `/learn` command definition
+
+**Modified:**
+- `scripts/analyze-complexity.js` - emits an "LLM-FALLBACK SUGGESTED" hint
+  in the hook output when deterministic confidence is low AND llmFallback
+  is enabled. Also handles the new `--log-llm-suggestion` special command.
+- `config/task-routing.json` - new `autoMode.llmFallback` config block
+  (just `{ enabled: false, _comment: "..." }`).
+
+**Behavior:**
+- Hook stays completely synchronous and zero-network
+- All real LLM work is done by Claude in-context using Task tool with
+  subagent_type="haiku-worker"
+- Suggestions log auto-trims to 500 entries; `/learn` shows top categories,
+  top keywords, and the recent 10 entries
+
+### Version sync
+All version numbers consolidated under **2.4.0** (was: plugin.json 2.3.0,
+package.json 2.3.0, marketplace.json plugin entry 2.3.0). `plugin.json`
+remains the single source of truth; `install-plugin.js` reads from it at
+runtime; CI enforces consistency.
+
 ## v2.3.0
 
 ### Distribution

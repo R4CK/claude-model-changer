@@ -4,7 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D16-brightgreen)](package.json)
-[![Plugin Version](https://img.shields.io/badge/plugin-v5.3.3-blue)](.claude-plugin/plugin.json)
+[![Plugin Version](https://img.shields.io/badge/plugin-v2.4.0-blue)](.claude-plugin/plugin.json)
 
 ---
 
@@ -153,6 +153,7 @@ Edit `config/task-routing.json` to add your own categories or move keywords betw
 | `/route <model> <task>` | Manual override |
 | `/rate <1-5>` | Rate the last routing decision (feeds the auto-tuner) |
 | `/tune` | Get suggestions to improve your routing config |
+| `/learn` | Review LLM-fallback classification suggestions and keyword candidates |
 | `/health` | Plugin self-diagnostics |
 
 ### Manual override (any prompt)
@@ -206,13 +207,40 @@ This forces opus for critical-path keywords *only in this project*, and disables
     "haiku": [1, 2],
     "opus":  [9, 10]
   },
-  "borderlineZones": [3, 4, 7, 8]
+  "borderlineZones": [3, 4, 7, 8],
+  "llmFallback": {
+    "enabled": false
+  }
 }
 ```
 
 - `autoThresholds`: score ranges that auto-delegate without asking
 - `borderlineZones`: scores that trigger a confirmation prompt with both options
 - `enabled: false` → always ask, never auto-route
+
+### LLM-fallback classifier (opt-in, v2.4.0+)
+
+When the deterministic scorer can't classify a prompt confidently
+(`confidence < 40` or no keyword match), the hook outputs a structured
+**instruction to Claude** to use the existing **`haiku-worker` subagent**
+(shipped with this plugin) to classify the prompt before routing.
+
+**The hook itself makes no API call.** It just emits a text instruction.
+Claude reads it, uses its built-in `Task` tool with `subagent_type="haiku-worker"`
+to classify, then routes the user's actual task to the chosen model. The
+classification result is also logged via the `--log-llm-suggestion`
+special command, so you can later review keyword candidates via `/learn`.
+
+**To enable:**
+1. In `config/task-routing.json`, set `autoMode.llmFallback.enabled = true`
+2. Restart Claude Code
+
+**Cost:** zero extra — the Haiku usage counts against your normal Claude
+Code subagent usage, not against a separate API key. No billing surprises.
+
+**Failure modes:** zero. The hook only suggests; Claude only acts if it
+receives the suggestion. There's no network call, no timeout, no auth flow
+to break.
 
 ---
 
