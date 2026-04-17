@@ -1,0 +1,110 @@
+name: Preflight
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  preflight:
+    name: Plugin integrity
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run preflight (10 checks)
+        run: node scripts/preflight.js
+
+      - name: Behavioral test - typo task should route to haiku
+        run: |
+          OUT=$(echo '{"prompt":"fix typo in README"}' | node scripts/analyze-complexity.js)
+          echo "$OUT"
+          echo "$OUT" | grep -q "haiku" || {
+            echo "FAIL: Expected 'haiku' in routing for typo task"
+            exit 1
+          }
+
+      - name: Behavioral test - architecture task should route to opus
+        run: |
+          OUT=$(echo '{"prompt":"redesign authentication architecture across all microservices"}' | node scripts/analyze-complexity.js)
+          echo "$OUT"
+          echo "$OUT" | grep -q "opus" || {
+            echo "FAIL: Expected 'opus' in routing for architecture task"
+            exit 1
+          }
+
+      - name: Behavioral test - bug fix should route to sonnet
+        run: |
+          OUT=$(echo '{"prompt":"fix the validation bug in the signup form"}' | node scripts/analyze-complexity.js)
+          echo "$OUT"
+          echo "$OUT" | grep -q "sonnet" || {
+            echo "FAIL: Expected 'sonnet' in routing for bug fix task"
+            exit 1
+          }
+
+      - name: Verify task-routing.json has all 28 categories
+        run: |
+          node -e "
+            var r = require('./config/task-routing.json');
+            var h = Object.keys(r.models.haiku.categories).length;
+            var s = Object.keys(r.models.sonnet.categories).length;
+            var o = Object.keys(r.models.opus.categories).length;
+            var total = h + s + o;
+            console.log('Categories - haiku:', h, 'sonnet:', s, 'opus:', o, 'total:', total);
+            if (total !== 28) {
+              console.error('Expected 28 categories, got', total);
+              process.exit(1);
+            }
+          "
+
+      - name: Verify hooks.json references all exist
+        run: |
+          node -e "
+            var fs = require('fs');
+            var path = require('path');
+            var raw = fs.readFileSync('hooks/hooks.json', 'utf8');
+            var refs = (raw.match(/scripts\/[A-Za-z0-9_-]+\.js/g) || []);
+            var unique = [];
+            refs.forEach(function(r) { if (unique.indexOf(r) === -1) unique.push(r); });
+            var missing = unique.filter(function(r) { return !fs.existsSync(r); });
+            if (missing.length) {
+              console.error('Missing referenced scripts:', missing);
+              process.exit(1);
+            }
+            console.log('All', unique.length, 'hook script references exist');
+          "
+
+      - name: Verify bundle is reproducible (dist/install.js sync)
+        run: |
+          node scripts/build-installer.js
+          if ! diff -q dist/install.js install.js >/dev/null 2>&1; then
+            echo "ERROR: dist/install.js is out of sync with the source tree"
+            echo "After your changes, run:"
+            echo "  node scripts/build-installer.js"
+            echo "  cp install.js dist/install.js"
+            echo ""
+            echo "First differences:"
+            diff <(head -20 dist/install.js) <(head -20 install.js) || true
+            exit 1
+          fi
+          echo "Bundle is in sync with source"
+
+      - name: Verify marketplace.json structure
+        run: |
+          node -e "
+            var m = require('./.claude-plugin/marketplace.json');
+            if (!m.name || !m.owner || !m.plugins || !Array.isArray(m.plugins)) {
+              console.error('Invalid marketplace.json structure');
+              process.exit(1);
+            }
+            console.log('marketplace.json OK - name:', m.name, '| plugins:', m.plugins.length);
+          "

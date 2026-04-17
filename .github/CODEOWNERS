@@ -1,0 +1,20 @@
+# Code ownership for claude-model-changer
+#
+# Every PR auto-requests review from the listed owners.
+# Combined with branch protection's "Require review from Code Owners",
+# this guarantees no PR can merge without R4CK's explicit approval.
+#
+# Syntax: <pattern> <@owner> [<@owner> ...]
+# More specific rules below override less specific ones above.
+
+# Default: R4CK owns everything
+*                       @R4CK
+
+# Critical paths get an extra explicit mention (same owner today,
+# but easy to add co-maintainers per area later):
+.github/                @R4CK
+scripts/analyze-complexity.js   @R4CK
+scripts/lib/scoring.js          @R4CK
+config/task-routing.json        @R4CK
+hooks/hooks.json                @R4CK
+.claude-plugin/                 @R4CK
