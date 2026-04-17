@@ -159,8 +159,11 @@ jobs:
                 actual: require('./.claude-plugin/marketplace.json').plugins[0].version
               },
               {
+                // T1.5 (v2.4.1): require the full heading pattern including
+                // 'Self-Contained Installer' so a heading rename fails loudly
+                // instead of silently matching 'undefined'.
                 file: 'dist/README.md heading',
-                actual: (fs.readFileSync('./dist/README.md', 'utf8').match(/^# .* v(\d+\.\d+\.\d+) /m) || [])[1]
+                actual: (fs.readFileSync('./dist/README.md', 'utf8').match(/^# Claude Model Changer v(\d+\.\d+\.\d+) - Self-Contained Installer/m) || ['', 'HEADING_NOT_FOUND'])[1]
               },
               {
                 file: 'scripts/install-plugin.js (must NOT hardcode version)',

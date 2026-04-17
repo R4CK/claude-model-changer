@@ -1,5 +1,42 @@
 # Changelog
 
+## v2.4.1
+
+### Audit fixes (no behavior changes beyond fixing bugs)
+
+* **[T1.1]** `scripts/lib/config.js`: `loadConfig()` now always returns an
+  object (never `null`). A corrupt or missing `task-routing.json` no longer
+  risks null propagation into validators or callers.
+* **[T1.2]** `scripts/analyze-complexity.js`: stdin JSON structure validated
+  before field access. Malformed hook inputs now exit cleanly with a
+  `stderr` warning (visible in `hook-debug.log`) instead of silently treating
+  `data.prompt` as `""`.
+* **[T1.3]** `scripts/analyze-complexity.js`: fixed weight-normalization
+  semantics. Previously weights that summed to 1.0 were silently scaled by
+  0.9 (because `targetSubScoreSum = 1.0 - contextBoostWeight`). Now the
+  normalizer accepts weights summing to either 1.0 or 0.9 as-is, and only
+  renormalizes if the user wrote a non-standard sum. Deterministic signals
+  are no longer silently weakened by ~10%.
+* **[T1.4]** `hooks/hooks.json`: removed hardcoded fallback paths
+  (`.../neon-local/.../2.0.0`). `${CLAUDE_PLUGIN_ROOT}` is always set by
+  Claude Code; if it ever isn't, the hook fails fast and the SessionStart
+  integrity check surfaces the problem. Non-NEON users no longer hit a
+  bogus fallback path on edge-case first-run.
+* **[T1.5]** `.github/workflows/preflight.yml`: version-sync check for
+  `dist/README.md` heading now requires the full pattern
+  `# Claude Model Changer vX.Y.Z - Self-Contained Installer`. Previously a
+  heading rename would silently match `undefined`.
+* **[T1.6]** (no-op) `config/patterns.json` confirmed as actively used by
+  `/save-pattern`, `/patterns`, and `stats.loadPatterns`. Documented in
+  CHANGELOG so it's not mistaken for dead code in future audits.
+
+### Verification
+- All 11 preflight checks green
+- Bundle reproducibility md5-stable across builds
+- CI behavioral tests (typo→haiku, architecture→opus, bug→sonnet) still pass
+- New edge case handled: `echo '{}' | node scripts/analyze-complexity.js`
+  exits cleanly with no crash
+
 ## v2.4.0
 
 ### New feature: LLM-fallback classification via the haiku-worker subagent (opt-in)

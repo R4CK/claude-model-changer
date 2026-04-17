@@ -50,20 +50,23 @@ function loadConfig(cwd) {
     } catch (err) {}
   }
 
-  if (baseConfig) {
-    // Auto-migrate config schema if needed
-    var migration = configMigrate.migrateConfig(baseConfig);
-    if (migration.migrated) {
-      baseConfig = migration.config;
-      process.stderr.write("[Model Router] Config migrated: " + migration.fromVersion + " -> " + migration.toVersion + "\n");
-      // Save migrated config back to disk
-      try { configMigrate.saveMigratedConfig(io.getConfigPath(), baseConfig); } catch (e) {}
-    }
+  // T1.1 (v2.4.1): never return null from loadConfig. A corrupt or missing
+  // task-routing.json should not crash downstream callers - they should get
+  // an empty object and degrade to built-in defaults.
+  if (!baseConfig) baseConfig = {};
 
-    var errors = validateConfig(baseConfig);
-    if (errors.length > 0) {
-      process.stderr.write("[Model Router] Config warnings:\n  - " + errors.join("\n  - ") + "\n");
-    }
+  // Auto-migrate config schema if needed
+  var migration = configMigrate.migrateConfig(baseConfig);
+  if (migration.migrated) {
+    baseConfig = migration.config;
+    process.stderr.write("[Model Router] Config migrated: " + migration.fromVersion + " -> " + migration.toVersion + "\n");
+    // Save migrated config back to disk
+    try { configMigrate.saveMigratedConfig(io.getConfigPath(), baseConfig); } catch (e) {}
+  }
+
+  var errors = validateConfig(baseConfig);
+  if (errors.length > 0) {
+    process.stderr.write("[Model Router] Config warnings:\n  - " + errors.join("\n  - ") + "\n");
   }
 
   _configCache[cacheKey] = baseConfig;
