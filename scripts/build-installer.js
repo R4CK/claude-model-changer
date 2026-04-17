@@ -29,6 +29,30 @@ function shouldExclude(relPath) {
   return false;
 }
 
+// Text file extensions whose line endings get normalized to LF before base64
+// encoding. This guarantees the bundle is byte-identical regardless of which
+// OS built it (Windows checkouts have CRLF; Linux has LF). Binary files are
+// passed through unchanged.
+var TEXT_EXTENSIONS = [".js", ".json", ".md", ".sh", ".ps1", ".bat", ".yml", ".yaml", ".txt", ".html", ".css"];
+
+function isTextFile(filePath) {
+  var ext = path.extname(filePath).toLowerCase();
+  if (TEXT_EXTENSIONS.indexOf(ext) !== -1) return true;
+  // Files without extension (LICENSE, etc.) - treat as text by default
+  if (ext === "") return true;
+  return false;
+}
+
+function readFileForBundle(filePath) {
+  if (isTextFile(filePath)) {
+    var text = fs.readFileSync(filePath, "utf8");
+    // Normalize CRLF -> LF so the base64 is identical on Windows and Linux
+    text = text.replace(/\r\n/g, "\n");
+    return Buffer.from(text, "utf8").toString("base64");
+  }
+  return fs.readFileSync(filePath).toString("base64");
+}
+
 function collectFiles(dir, base) {
   var results = [];
   if (!fs.existsSync(dir)) return results;
@@ -43,7 +67,7 @@ function collectFiles(dir, base) {
     } else {
       results.push({
         path: relPath,
-        content: fs.readFileSync(fullPath).toString("base64"),
+        content: readFileForBundle(fullPath),
         size: stat.size
       });
     }
@@ -68,7 +92,7 @@ FILES_TO_INCLUDE.forEach(function(f) {
     var stat = fs.statSync(filePath);
     allFiles.push({
       path: f,
-      content: fs.readFileSync(filePath).toString("base64"),
+      content: readFileForBundle(filePath),
       size: stat.size
     });
   }
