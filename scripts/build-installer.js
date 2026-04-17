@@ -43,14 +43,20 @@ function isTextFile(filePath) {
   return false;
 }
 
+// Returns { content: <base64>, size: <normalized-byte-length> }
+// IMPORTANT: size MUST be the post-normalization length, NOT the on-disk
+// stat.size. fs.statSync() reports the disk size (CRLF-aware on Windows,
+// LF on Linux), which produces different bundles per OS even when the
+// content is identical after normalization.
 function readFileForBundle(filePath) {
   if (isTextFile(filePath)) {
     var text = fs.readFileSync(filePath, "utf8");
-    // Normalize CRLF -> LF so the base64 is identical on Windows and Linux
     text = text.replace(/\r\n/g, "\n");
-    return Buffer.from(text, "utf8").toString("base64");
+    var buf = Buffer.from(text, "utf8");
+    return { content: buf.toString("base64"), size: buf.length };
   }
-  return fs.readFileSync(filePath).toString("base64");
+  var raw = fs.readFileSync(filePath);
+  return { content: raw.toString("base64"), size: raw.length };
 }
 
 function collectFiles(dir, base) {
@@ -69,10 +75,11 @@ function collectFiles(dir, base) {
     if (stat.isDirectory()) {
       results = results.concat(collectFiles(fullPath, relPath));
     } else {
+      var bundled = readFileForBundle(fullPath);
       results.push({
         path: relPath,
-        content: readFileForBundle(fullPath),
-        size: stat.size
+        content: bundled.content,
+        size: bundled.size  // normalized byte length (cross-OS reproducible)
       });
     }
   }
@@ -93,11 +100,11 @@ DIRS_TO_INCLUDE.forEach(function(d) {
 FILES_TO_INCLUDE.forEach(function(f) {
   var filePath = path.join(ROOT, f);
   if (fs.existsSync(filePath)) {
-    var stat = fs.statSync(filePath);
+    var bundled = readFileForBundle(filePath);
     allFiles.push({
       path: f,
-      content: readFileForBundle(filePath),
-      size: stat.size
+      content: bundled.content,
+      size: bundled.size  // normalized byte length
     });
   }
 });
