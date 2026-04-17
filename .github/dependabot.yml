@@ -1,0 +1,36 @@
+version: 2
+
+# Dependabot configuration for claude-model-changer
+#
+# The plugin itself is zero-dep (no node_modules), so no npm ecosystem entry.
+# This config only watches GitHub Actions versions used in the CI workflow.
+#
+# Updates land as PRs that go through the normal CI + Code Owner review
+# (per branch protection on main). Grouped weekly to avoid PR spam.
+
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Europe/Budapest"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "ci"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    groups:
+      actions-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    reviewers:
+      - "R4CK"
+    assignees:
+      - "R4CK"
