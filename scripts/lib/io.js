@@ -16,26 +16,50 @@ var CONSTANTS = {
   MAX_FALLBACK_ENTRIES: 500,
   MAX_QUALITY_ENTRIES: 500,
   MAX_BENCHMARK_ENTRIES: 200,
-  CONFIDENCE: { LOW: 25, MEDIUM: 50, HIGH: 70 }
+  CONFIDENCE: { LOW: 25, MEDIUM: 50, HIGH: 70 },
+  AVG_TOKENS: { haiku: 1500, sonnet: 3000, opus: 6000 },
+  DEFAULT_COSTS: {
+    haiku: { inputPer1M: 0.25, outputPer1M: 1.25 },
+    sonnet: { inputPer1M: 3.00, outputPer1M: 15.00 },
+    opus: { inputPer1M: 15.00, outputPer1M: 75.00 }
+  }
 };
 
 var BASE_DIR = path.join(__dirname, "..", "..");
 
 // ---- FILE I/O CACHE ----
+// Cache is invalidated automatically when the file's mtime/size changes,
+// so out-of-process writes (e.g. a parallel detect-fallback.js appending to
+// usage.jsonl) are picked up without manual clearCache() calls.
 var _fileCache = {};
+var _fileCacheStamp = {};
+
+function _stamp(stat) { return stat.mtimeMs + ":" + stat.size; }
+
 function readLogCached(logPath) {
-  if (_fileCache[logPath]) return _fileCache[logPath];
+  var stat;
+  try { stat = fs.statSync(logPath); }
+  catch (e) {
+    delete _fileCache[logPath];
+    delete _fileCacheStamp[logPath];
+    return [];
+  }
+  var s = _stamp(stat);
+  if (_fileCache[logPath] && _fileCacheStamp[logPath] === s) {
+    return _fileCache[logPath];
+  }
   try {
     var content = fs.readFileSync(logPath, "utf8").replace(/^\uFEFF/, "").trim();
     var entries = content.split("\n").filter(function(l) { return l.length > 0; }).map(function(l) {
       try { return JSON.parse(l); } catch(e) { return null; }
     }).filter(Boolean);
     _fileCache[logPath] = entries;
+    _fileCacheStamp[logPath] = s;
     return entries;
   } catch(e) { return []; }
 }
 
-function clearCache() { _fileCache = {}; }
+function clearCache() { _fileCache = {}; _fileCacheStamp = {}; }
 
 // ---- FILE PATHS ----
 function getLogPath() { return path.join(BASE_DIR, "logs", "usage.jsonl"); }
@@ -71,6 +95,7 @@ function trimLog(logPath, maxEntries) {
       fs.renameSync(tmpPath, logPath);
       _lineCountCache[logPath] = trimmed.length;
       delete _fileCache[logPath];
+      delete _fileCacheStamp[logPath];
     }
   } catch (err) {
     process.stderr.write("[Model Router] Trim error: " + err.message + "\n");
@@ -85,6 +110,7 @@ function appendLog(getPathFn, entry, maxEntries) {
     var p = getPathFn();
     fs.appendFileSync(p, JSON.stringify(entry) + "\n");
     delete _fileCache[p];
+    delete _fileCacheStamp[p];
     // Check actual file size to trigger trim (fixes multi-process dead code issue)
     // File size check is cheap (~1 syscall) vs reading entire file
     var needsTrim = false;
@@ -107,11 +133,14 @@ function appendLog(getPathFn, entry, maxEntries) {
 }
 
 function logUsage(entry) {
-  // H1: Sanitize numeric fields before logging to prevent NaN poisoning historical data
+  // H1: Sanitize numeric fields before logging to prevent NaN poisoning historical data.
+  // Warn on stderr — NaN here indicates an upstream scoring bug worth investigating.
   if (entry && typeof entry.score === "number" && (isNaN(entry.score) || !isFinite(entry.score))) {
+    process.stderr.write("[Model Router] NaN/Inf score corrected to 5 (upstream scoring bug)\n");
     entry.score = 5; entry._nanCorrected = true;
   }
   if (entry && typeof entry.confidence === "number" && (isNaN(entry.confidence) || !isFinite(entry.confidence))) {
+    process.stderr.write("[Model Router] NaN/Inf confidence corrected to 50 (upstream scoring bug)\n");
     entry.confidence = 50; entry._nanCorrected = true;
   }
   appendLog(getLogPath, entry, CONSTANTS.MAX_USAGE_ENTRIES);
@@ -138,11 +167,7 @@ function rotateDebugLog() {
 }
 
 function estimateModelCost(model, tokens, config) {
-  var costs = (config && config.costEstimates) ? config.costEstimates : {
-    haiku: { inputPer1M: 0.25, outputPer1M: 1.25 },
-    sonnet: { inputPer1M: 3.00, outputPer1M: 15.00 },
-    opus: { inputPer1M: 15.00, outputPer1M: 75.00 }
-  };
+  var costs = (config && config.costEstimates) ? config.costEstimates : CONSTANTS.DEFAULT_COSTS;
   var mc = costs[model] || costs.sonnet;
   var inp = tokens * CONSTANTS.TOKEN_INPUT_RATIO;
   var outp = tokens * CONSTANTS.TOKEN_OUTPUT_RATIO;

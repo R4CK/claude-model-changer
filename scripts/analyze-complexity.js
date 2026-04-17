@@ -25,6 +25,7 @@ var path = require("path");
 var io = require("./lib/io");
 var configModule = require("./lib/config");
 var scoring = require("./lib/scoring");
+var history = require("./lib/history");
 var contextMonitor = require("./lib/context-monitor");
 var monitors = require("./lib/monitors");
 var stats = require("./lib/stats");
@@ -620,7 +621,7 @@ process.stdin.on("end", function() {
       lines.push("If the task is trivially simple (like a direct question), you may answer directly without delegating.");
     } else if (result.borderline.isBorderline) {
       // GSD-inspired: Enhanced borderline with historical context
-      var borderCtx = scoring.getBorderlineContext(result.score, result.matchedCategory, config);
+      var borderCtx = history.getBorderlineContext(result.score, result.matchedCategory, config);
       if (borderCtx && borderCtx.canAutoResolve && result.confidence.confidence >= 40) {
         lines.push("BORDERLINE AUTO-RESOLVED: Score " + result.score + "/10 (" + result.borderline.between + "), but historical data (" + borderCtx.totalHistorical + " uses) strongly favors **" + borderCtx.autoResolveModel + "**.");
         lines.push("Automatically delegate to **" + borderCtx.autoResolveModel + "-worker**.");
