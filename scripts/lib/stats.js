@@ -33,13 +33,9 @@ function checkPatterns(promptLower, patterns) {
 // ---- STATS ----
 
 function calculateSavings(entries, config) {
-  var costs = (config && config.costEstimates) ? config.costEstimates : {
-    haiku: { inputPer1M: 0.25, outputPer1M: 1.25 },
-    sonnet: { inputPer1M: 3.00, outputPer1M: 15.00 },
-    opus: { inputPer1M: 15.00, outputPer1M: 75.00 }
-  };
+  var costs = (config && config.costEstimates) ? config.costEstimates : io.CONSTANTS.DEFAULT_COSTS;
   var avgTokens = (config && config.savingsTracking && config.savingsTracking.avgTokensPerTask)
-    ? config.savingsTracking.avgTokensPerTask : { haiku: 1500, sonnet: 3000, opus: 6000 };
+    ? config.savingsTracking.avgTokensPerTask : io.CONSTANTS.AVG_TOKENS;
 
   var actualCost = 0, opusCost = 0;
   entries.forEach(function(e) {
@@ -67,7 +63,8 @@ function getStats(config) {
     var entries = io.readLogCached(logPath);
     if (entries.length === 0) return null;
 
-    var total = entries.length;
+    var KNOWN_MODELS = { haiku: true, sonnet: true, opus: true };
+    var total = 0;
     var modelCounts = { haiku: 0, sonnet: 0, opus: 0 };
     var categoryCounts = {};
     var autoRouted = 0, borderline = 0, overrides = 0, scoreSum = 0;
@@ -76,7 +73,10 @@ function getStats(config) {
     var todayCount = 0, weekCount = 0;
 
     entries.forEach(function(e) {
-      modelCounts[e.model] = (modelCounts[e.model] || 0) + 1;
+      // Only count entries with a recognized model so percentages always sum to ~100%.
+      if (!KNOWN_MODELS[e.model]) return;
+      total++;
+      modelCounts[e.model]++;
       if (e.category) categoryCounts[e.category] = (categoryCounts[e.category] || 0) + 1;
       if (e.autoRouted) autoRouted++;
       if (e.borderline) borderline++;
