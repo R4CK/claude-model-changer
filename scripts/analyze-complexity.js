@@ -356,60 +356,21 @@ process.stdin.on("end", function() {
       io.logFallback({ timestamp: new Date().toISOString(), fromModel: fallbackMatch[1], toModel: fallbackMatch[2], reason: fallbackMatch[3] });
       process.stdout.write("Fallback logged."); process.exit(0);
     }
-    // --log-llm-suggestion <model> <category> <lang> <kw1,kw2,kw3> <originalPrompt>
+    // --log-llm-suggestion <model> <category> <kw1,kw2,kw3> <originalPrompt>
     // Called by Claude after the haiku-worker subagent classifies a low-confidence prompt.
-    //   <model>    : haiku | sonnet | opus
-    //   <category> : 2-4 word label, with underscores instead of spaces
-    //   <lang>     : en | hu | de  (matches detectLanguage output)
-    //   <keywords> : comma-separated, no spaces within each keyword
-    //   <prompt>   : the original user prompt (may contain spaces)
-    var llmSuggestionMatch = prompt.trim().match(/^--log-llm-suggestion\s+(haiku|sonnet|opus)\s+([^\s]+)\s+(en|hu|de)\s+([^\s]+)\s+(.+)$/);
+    var llmSuggestionMatch = prompt.trim().match(/^--log-llm-suggestion\s+(haiku|sonnet|opus)\s+([^\s]+)\s+([^\s]+)\s+(.+)$/);
     if (llmSuggestionMatch) {
-      var llmModel = llmSuggestionMatch[1];
-      var llmCategory = llmSuggestionMatch[2].replace(/_/g, " ");
-      var llmLang = llmSuggestionMatch[3];
-      var keywords = llmSuggestionMatch[4].split(",").map(function(k) { return k.trim(); }).filter(function(k) { return k.length > 0; });
-      var llmOriginalPrompt = llmSuggestionMatch[5];
-
-      var suggestion = {
-        prompt: llmOriginalPrompt,
-        suggestedCategory: llmCategory,
+      var keywords = llmSuggestionMatch[3].split(",").map(function(k) { return k.trim(); }).filter(function(k) { return k.length > 0; });
+      learnLog.appendSuggestion({
+        prompt: llmSuggestionMatch[4],
+        suggestedCategory: llmSuggestionMatch[2].replace(/_/g, " "),
         suggestedKeywords: keywords,
-        suggestedModel: llmModel,
-        lang: llmLang,
+        suggestedModel: llmSuggestionMatch[1],
         llmModel: "haiku-worker (subagent)",
         llmConfidence: null,
         latencyMs: null
-      };
-      learnLog.appendSuggestion(suggestion);
-
-      // Auto-apply if config says so AND occurrence count hits threshold
-      var output = "LLM suggestion logged (lang=" + llmLang + ").";
-      try {
-        var learnedConfig = require("./lib/learned-config");
-        var autoCfg = configModule.loadConfig(cwd);
-        var applied = learnedConfig.tryAutoApply(suggestion, autoCfg);
-        if (applied && applied.length > 0) {
-          output += " Auto-applied " + applied.length + " keyword(s) to learned-keywords.json: " +
-            applied.map(function(a) { return '"' + a.keyword + '" (' + a.count + 'x)'; }).join(", ");
-        }
-      } catch (e) {
-        // Auto-apply is best-effort
-      }
-      process.stdout.write(output);
-      process.exit(0);
-    }
-
-    // --learn-promote: emit a diff showing what learned-keywords.json would
-    // promote into task-routing.json (manual workflow - user copies into PR)
-    if (prompt.trim() === "--learn-promote") {
-      try {
-        var lc = require("./lib/learned-config");
-        var bc = configModule.loadConfig(cwd);
-        process.stdout.write(lc.generatePromoteDiff(bc));
-      } catch (e) {
-        process.stdout.write("Error generating promote diff: " + e.message);
-      }
+      });
+      process.stdout.write("LLM suggestion logged.");
       process.exit(0);
     }
 
@@ -552,30 +513,21 @@ process.stdin.on("end", function() {
     // no API key, no extra cost beyond the user's existing Haiku subagent
     // usage. After classifying, Claude logs the suggestion via the
     // --log-llm-suggestion special command so /learn can review it.
-    //
-    // Multi-language: the detected language (en / hu / de) is passed to
-    // haiku-worker so it suggests keywords in the user's language. Those
-    // keywords land in the right place (models.X.categories.Y.keywords for
-    // English, translations.<lang>.Y for HU/DE) when /learn applies them.
     if (llmFallbackHinted) {
       var safePrompt = prompt.replace(/"/g, '\\"').replace(/\n/g, " ").substring(0, 500);
-      var detectedLang = result.detectedLanguage || "en";
-      var langName = ({ en: "English", hu: "Hungarian", de: "German" })[detectedLang] || detectedLang;
       lines.push("");
       lines.push("LLM-FALLBACK SUGGESTED: Confidence is low (" + result.confidence.confidence + "%) and no keyword matched.");
-      lines.push("Detected user language: " + langName + " (" + detectedLang + ")");
       lines.push("INSTRUCTION TO CLAUDE: Before routing, use the Agent tool with subagent_type=\"haiku-worker\" to classify this prompt:");
       lines.push("");
       lines.push("  Task description: \"Classify task complexity\"");
       lines.push("  Task prompt: |");
       lines.push("    Classify the complexity of this user prompt. Respond with ONLY a JSON object:");
-      lines.push("    { \"model\": \"haiku\"|\"sonnet\"|\"opus\", \"category\": \"<2-4 word label, English>\", \"keywords\": [\"kw1\",\"kw2\",\"kw3\"], \"confidence\": <0-100> }");
+      lines.push("    { \"model\": \"haiku\"|\"sonnet\"|\"opus\", \"category\": \"<2-4 word label>\", \"keywords\": [\"kw1\",\"kw2\",\"kw3\"], \"confidence\": <0-100> }");
       lines.push("    Routing rules: haiku=trivial (typos, formatting, single-line), sonnet=medium (bug fixes, features, refactors, tests), opus=complex (architecture, security, multi-file, performance).");
-      lines.push("    IMPORTANT: The user's language is " + langName + ". Suggest keywords IN " + langName.toUpperCase() + " (in the language of their prompt), so future similar prompts in that language will match deterministically.");
       lines.push("    User prompt: \"" + safePrompt + "\"");
       lines.push("");
       lines.push("Then: (a) route the user's actual task to the model haiku-worker chose, (b) log the suggestion via:");
-      lines.push("  echo '{\"prompt\":\"--log-llm-suggestion <model> <category_with_underscores> " + detectedLang + " <kw1,kw2,kw3> <original-prompt>\"}' | node \"${CLAUDE_PLUGIN_ROOT}/scripts/analyze-complexity.js\"");
+      lines.push("  echo '{\"prompt\":\"--log-llm-suggestion <model> <category-with-underscores> <kw1,kw2,kw3> <original-prompt>\"}' | node \"${CLAUDE_PLUGIN_ROOT}/scripts/analyze-complexity.js\"");
       lines.push("");
     }
 

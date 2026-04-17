@@ -1,11 +1,9 @@
 ---
-description: "Review LLM-fallback classification suggestions, auto-applied learned keywords, and propose task-routing.json updates"
-argument-hint: "[--promote]"
+description: "Review LLM-fallback classification suggestions and propose task-routing.json updates"
+argument-hint: ""
 ---
 
-The user wants to review what the LLM-fallback classifier (Claude Haiku via the haiku-worker subagent) has been suggesting for prompts that the deterministic scorer couldn't classify.
-
-## Without arguments — review summary
+The user wants to review what the LLM-fallback classifier (Claude Haiku) has been suggesting for prompts that the deterministic scorer couldn't classify.
 
 Run the show-learn-suggestions script:
 ```bash
@@ -15,29 +13,18 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/show-learn-suggestions.js"
 The output shows:
 - Total LLM-fallback suggestions logged
 - Distribution by suggested model (haiku / sonnet / opus)
-- **How many keywords have been auto-applied** to `logs/learned-keywords.json` (per-user, gitignored)
 - Top categories the LLM has been suggesting (frequency-sorted)
 - Top keywords suggested for each model (frequency-sorted)
-- The most recent 10 suggestions with prompts and detected language
+- The most recent 10 suggestions with prompts
 
-After showing the output, help the user **decide what to do**:
+After showing the output, help the user **decide what to add to `config/task-routing.json`**:
 
-1. **Auto-applied keywords** are already active in this user's runtime config (deep-merged into `task-routing.json` at load time). The user may want to **promote** them to the shared `task-routing.json` so other users / machines also benefit. See "--promote" below.
+1. **High-frequency keywords** (count >= 3) are good candidates to add to existing categories. Identify which existing category in the user's `task-routing.json` is most semantically similar to the LLM-suggested category, and propose adding the keyword to that category's `keywords` array.
 
-2. **Suggestions not yet auto-applied** (count below `learn.autoApply.minOccurrences`, default 5): the user can manually copy them to `task-routing.json` via PR if they want to short-circuit the auto-apply threshold. Show the proposed diff as a code block; never auto-modify.
+2. **High-frequency categories** that don't match any existing category may warrant creating a new entry. Propose: under `models.<model>.categories.<new_key>`, add `{ "label": "<Display Label>", "keywords": ["kw1", "kw2", "kw3"] }`.
 
-3. If `learn.autoApply.enabled` is **false** in `task-routing.json`, mention that the user can enable it to let high-confidence suggestions auto-apply locally.
+3. **Show the diff** as a code block (don't apply automatically). The user reviews and edits manually, then opens a PR.
 
-## With `--promote` — generate diff for sharing
+If the LLM fallback is disabled or there are no suggestions yet, the script tells the user how to enable it (set `ANTHROPIC_API_KEY` env var, set `autoMode.llmFallback.enabled = true` in `task-routing.json`).
 
-```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/show-learn-suggestions.js" --promote
-```
-
-This emits a human-readable diff showing exactly what the per-user `learned-keywords.json` would add to the shared `task-routing.json`. The user reviews, then incorporates the diff into a PR (which the CI will validate).
-
-## Multi-language note
-
-Each suggestion records the detected language (`en` / `hu` / `de`). When auto-applied, English keywords land in `models.<model>.categories.<key>.keywords`, while Hungarian/German land in `translations.<lang>.<key>` arrays — matching the existing multi-language structure of `task-routing.json`.
-
-**Important:** Never auto-modify `task-routing.json`. The auto-apply only writes to `logs/learned-keywords.json` (per-user). Promotion to the shared config is always a deliberate, PR-reviewed change.
+**Important:** Never auto-modify `task-routing.json`. Always show the proposed changes and let the user apply them via a PR (which will be CI-checked for routing behavior).

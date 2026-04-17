@@ -13,7 +13,6 @@ logs/*.md
 
 # LLM-fallback learn suggestions (per-user usage data)
 logs/learn-suggestions.jsonl
-logs/learned-keywords.json
 
 # Dependencies
 node_modules/

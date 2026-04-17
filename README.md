@@ -231,13 +231,6 @@ to classify, then routes the user's actual task to the chosen model. The
 classification result is also logged via the `--log-llm-suggestion`
 special command, so you can later review keyword candidates via `/learn`.
 
-**Multi-language aware**: the hint includes the detected user language
-(en/hu/de), and Claude is instructed to ask haiku-worker for keywords IN
-THE USER'S LANGUAGE. Suggested English keywords land in
-`models.<model>.categories.<key>.keywords`; Hungarian and German keywords
-land in `translations.<lang>.<key>` arrays — matching the existing
-multi-language structure.
-
 **To enable:**
 1. In `config/task-routing.json`, set `autoMode.llmFallback.enabled = true`
 2. Restart Claude Code
@@ -248,30 +241,6 @@ Code subagent usage, not against a separate API key. No billing surprises.
 **Failure modes:** zero. The hook only suggests; Claude only acts if it
 receives the suggestion. There's no network call, no timeout, no auth flow
 to break.
-
-### Tier 2 auto-apply: self-learning keyword config (opt-in, v2.4.0+)
-
-When `learn.autoApply.enabled = true` AND a keyword has been suggested
-N+ times (default 5), the hook auto-appends it to
-`logs/learned-keywords.json` (per-user, gitignored). This file is
-deep-merged into the runtime config, so the keyword takes effect on the
-NEXT prompt — no manual edit, no restart.
-
-The shared `task-routing.json` stays clean and reviewed; per-user
-adaptations live separately. The system gets smarter the more you use it.
-
-```json
-"learn": {
-  "autoApply": {
-    "enabled": false,
-    "minOccurrences": 5
-  }
-}
-```
-
-To share learned keywords across machines (or contribute back upstream),
-run `/learn --promote` to get a diff that can be incorporated into
-`task-routing.json` via a PR (which the CI will validate).
 
 ---
 
