@@ -14,8 +14,19 @@
 
 var path = require("path");
 var learnLog = require("./lib/learn-log");
+var learnedConfig = require("./lib/learned-config");
+var configModule = require("./lib/config");
 
 var JSON_OUT = process.argv.indexOf("--json") !== -1;
+var PROMOTE = process.argv.indexOf("--promote") !== -1;
+
+// --promote mode: emit a diff of what learned-keywords.json would add to
+// task-routing.json. The user reviews and applies via PR.
+if (PROMOTE) {
+  var bc = configModule.loadConfig(process.cwd());
+  process.stdout.write(learnedConfig.generatePromoteDiff(bc) + "\n");
+  process.exit(0);
+}
 
 var summary = learnLog.summarize();
 
@@ -48,6 +59,28 @@ lines.push("Total suggestions logged: " + summary.totalSuggestions);
 lines.push("By model: haiku=" + summary.byModel.haiku +
            ", sonnet=" + summary.byModel.sonnet +
            ", opus=" + summary.byModel.opus);
+
+// Show how many keywords have been auto-applied to learned-keywords.json
+var learned = learnedConfig.load();
+if (learned) {
+  var totalLearned = 0;
+  if (learned.models) {
+    Object.values(learned.models).forEach(function(m) {
+      if (m.categories) Object.values(m.categories).forEach(function(c) {
+        totalLearned += (c.keywords || []).length;
+      });
+    });
+  }
+  if (learned.translations) {
+    Object.values(learned.translations).forEach(function(langCats) {
+      Object.values(langCats).forEach(function(arr) {
+        if (Array.isArray(arr)) totalLearned += arr.length;
+      });
+    });
+  }
+  lines.push("Auto-applied to learned-keywords.json: " + totalLearned + " keyword(s)");
+  lines.push("  (run with --promote to see what would migrate to task-routing.json)");
+}
 lines.push("");
 
 if (summary.topCategories.length > 0) {

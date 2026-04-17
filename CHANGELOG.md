@@ -41,7 +41,49 @@ Claude Code subagent usage - no separate API key, no separate billing.
 - All real LLM work is done by Claude in-context using Task tool with
   subagent_type="haiku-worker"
 - Suggestions log auto-trims to 500 entries; `/learn` shows top categories,
-  top keywords, and the recent 10 entries
+  top keywords, auto-applied count, and the recent 10 entries
+
+### Multi-language support in LLM fallback
+
+The hook detects user prompt language (en / hu / de) and instructs Claude
+to ask haiku-worker to suggest keywords IN THE USER'S LANGUAGE. The
+`--log-llm-suggestion` command takes a `<lang>` parameter and routes
+keywords to the right place:
+- `en` -> `models.<model>.categories.<key>.keywords`
+- `hu` -> `translations.hu.<key>`
+- `de` -> `translations.de.<key>`
+
+This matches the existing multi-language structure of `task-routing.json`.
+
+### Tier 2 auto-apply: per-user learned keywords
+
+When `learn.autoApply.enabled = true` AND a keyword has been suggested
+N+ times (default 5), the hook auto-appends it to a per-user
+`logs/learned-keywords.json` file. This file is gitignored AND
+deep-merged into the runtime config by `lib/config.js`, so the keyword
+takes effect IMMEDIATELY on the next prompt.
+
+The shared `task-routing.json` stays clean and reviewed - per-user
+adaptations live separately. Run `/learn --promote` to get a diff for
+incorporating learned keywords into `task-routing.json` via PR.
+
+**New config:**
+```json
+"learn": {
+  "autoApply": {
+    "enabled": false,
+    "minOccurrences": 5
+  }
+}
+```
+
+**Files: `scripts/lib/learned-config.js` (new), modified
+`scripts/lib/io.js` (getLearnedConfigPath), `scripts/lib/config.js`
+(deep-merge), `scripts/lib/learn-log.js` (lang field),
+`scripts/show-learn-suggestions.js` (--promote flag),
+`scripts/analyze-complexity.js` (--learn-promote command + auto-apply
+trigger), `commands/learn.md` (documents --promote), `.gitignore`
+(excludes learned-keywords.json).
 
 ### Version sync
 All version numbers consolidated under **2.4.0** (was: plugin.json 2.3.0,

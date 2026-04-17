@@ -35,6 +35,7 @@ function appendSuggestion(entry) {
       suggestedCategory: entry.suggestedCategory || "",
       suggestedKeywords: Array.isArray(entry.suggestedKeywords) ? entry.suggestedKeywords : [],
       suggestedModel: entry.suggestedModel || "",
+      lang: entry.lang || "en",
       llmConfidence: typeof entry.llmConfidence === "number" ? entry.llmConfidence : null,
       llmModel: entry.llmModel || "",
       latencyMs: typeof entry.latencyMs === "number" ? entry.latencyMs : null
