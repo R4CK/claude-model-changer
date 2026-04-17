@@ -183,7 +183,15 @@ process.stdin.on("end", function() {
     if (upgradeWarning) process.stdout.write(upgradeWarning + "\n");
 
   } catch (err) {
-    // Silent exit on parse errors — this hook should never block
+    // T2.4 (v2.5.0): log hook errors so failures are visible via /health
+    try {
+      require("./lib/error-log").logHookError({
+        script: "detect-fallback.js",
+        phase: "main",
+        error: err,
+        input: input
+      });
+    } catch (e) { /* never cascade */ }
   }
   process.exit(0);
 });

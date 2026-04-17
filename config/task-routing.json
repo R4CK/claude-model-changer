@@ -246,6 +246,33 @@
             "handle error",
             "try catch"
           ]
+        },
+        "performance_debug": {
+          "label": "Performance debugging",
+          "keywords": [
+            "slow",
+            "lag",
+            "bottleneck",
+            "why is this slow",
+            "investigate performance",
+            "timing issue",
+            "perf regression",
+            "laggy",
+            "too slow"
+          ]
+        },
+        "investigation": {
+          "label": "Code investigation",
+          "keywords": [
+            "trace execution",
+            "how does",
+            "walk me through",
+            "explain the flow",
+            "understand this code",
+            "trace through",
+            "what does this do",
+            "explain this function"
+          ]
         }
       }
     },
@@ -314,14 +341,13 @@
             "security analysis"
           ]
         },
-        "performance": {
-          "label": "Performance",
+        "performance_audit": {
+          "label": "Performance audit",
           "keywords": [
             "performance audit",
             "profiling",
             "benchmark",
             "optimize across",
-            "bottleneck",
             "performance optimization"
           ]
         },
@@ -644,6 +670,22 @@
         "adj hozzá validációt",
         "kezeld a hibát"
       ],
+      "performance_debug": [
+        "lassú",
+        "akadozik",
+        "miért lassú",
+        "teljesítményprobléma",
+        "lassúság",
+        "nem elég gyors"
+      ],
+      "investigation": [
+        "hogyan működik",
+        "magyarázd el a működést",
+        "vezess végig",
+        "értsd meg",
+        "kövesd végig",
+        "mit csinál ez a függvény"
+      ],
       "documentation": [
         "dokumentáld",
         "dokumentáció",
@@ -680,7 +722,7 @@
         "sebezhetőség",
         "biztonsági ellenőrzés"
       ],
-      "performance": [
+      "performance_audit": [
         "teljesítmény audit",
         "profilozás",
         "szűk keresztmetszet",
@@ -820,6 +862,22 @@
         "Validierung hinzufügen",
         "Fehler behandeln"
       ],
+      "performance_debug": [
+        "langsam",
+        "hängt",
+        "warum so langsam",
+        "Leistungsproblem",
+        "Performance-Regression",
+        "zu langsam"
+      ],
+      "investigation": [
+        "wie funktioniert",
+        "erkläre den Ablauf",
+        "verfolge die Ausführung",
+        "durchgehe",
+        "was macht diese Funktion",
+        "verstehen"
+      ],
       "documentation": [
         "dokumentiere",
         "Dokumentation",
@@ -856,7 +914,7 @@
         "Schwachstelle",
         "Sicherheitsüberprüfung"
       ],
-      "performance": [
+      "performance_audit": [
         "Leistungsaudit",
         "Profiling",
         "Engpass",

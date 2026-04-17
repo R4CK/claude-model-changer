@@ -54,7 +54,34 @@ jobs:
             exit 1
           }
 
-      - name: Verify task-routing.json has all 28 categories
+      - name: Behavioral test - performance investigation should route to sonnet
+        run: |
+          OUT=$(echo '{"prompt":"investigate the performance bottleneck in this handler"}' | node scripts/analyze-complexity.js)
+          echo "$OUT"
+          echo "$OUT" | grep -q "sonnet" || {
+            echo "FAIL: Expected 'sonnet' for performance investigation (performance_debug category)"
+            exit 1
+          }
+
+      - name: Behavioral test - performance audit should still route to opus
+        run: |
+          OUT=$(echo '{"prompt":"audit authentication performance across microservices"}' | node scripts/analyze-complexity.js)
+          echo "$OUT"
+          echo "$OUT" | grep -q "opus" || {
+            echo "FAIL: Expected 'opus' for performance audit (performance_audit category)"
+            exit 1
+          }
+
+      - name: Behavioral test - trace execution should route to sonnet (investigation)
+        run: |
+          OUT=$(echo '{"prompt":"trace execution of fetchUser and walk me through it"}' | node scripts/analyze-complexity.js)
+          echo "$OUT"
+          echo "$OUT" | grep -q "sonnet" || {
+            echo "FAIL: Expected 'sonnet' for trace execution (investigation category)"
+            exit 1
+          }
+
+      - name: Verify task-routing.json has at least 28 categories
         run: |
           node -e "
             var r = require('./config/task-routing.json');
@@ -63,8 +90,11 @@ jobs:
             var o = Object.keys(r.models.opus.categories).length;
             var total = h + s + o;
             console.log('Categories - haiku:', h, 'sonnet:', s, 'opus:', o, 'total:', total);
-            if (total !== 28) {
-              console.error('Expected 28 categories, got', total);
+            // T2.3 (v2.5.0): added performance_debug + investigation (2 new sonnet
+            // categories, bringing total to 30). Allow >= 28 to leave room for
+            // future /learn-promoted categories without breaking CI.
+            if (total < 28) {
+              console.error('Expected >= 28 categories, got', total);
               process.exit(1);
             }
           "

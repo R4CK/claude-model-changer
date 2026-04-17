@@ -1,5 +1,80 @@
 # Changelog
 
+## v2.5.0 (second of two PRs: config completeness + error visibility)
+
+### New categories (T2.3)
+
+Added **2 new sonnet categories** to address routing gaps identified in the audit:
+
+* **`performance_debug`** (sonnet) — debugging slow code / performance regressions.
+  Keywords: `slow`, `lag`, `bottleneck`, `why is this slow`,
+  `investigate performance`, `timing issue`, `perf regression`, `laggy`, `too slow`.
+  Previously, prompts like "investigate the performance bottleneck" matched
+  the opus `performance` category even though they're medium-complexity
+  debugging, not full optimization audits.
+
+* **`investigation`** (sonnet) — code-reading / trace-through tasks.
+  Keywords: `trace execution`, `how does`, `walk me through`, `explain the flow`,
+  `understand this code`, `trace through`, `what does this do`,
+  `explain this function`.
+  Previously these had no category and fell through to word-count-only scoring.
+
+### Renamed opus category
+
+* **`performance` -> `performance_audit`** (opus). More specific label to
+  distinguish from the new sonnet-level `performance_debug`. Keywords narrowed
+  to audit/profiling focus (kept: `performance audit`, `profiling`, `benchmark`,
+  `optimize across`, `performance optimization`; removed generic `bottleneck`
+  which now lives in sonnet).
+
+### HU / DE translations
+Added Hungarian and German keyword translations for both new categories,
+matching the existing multi-language structure.
+
+### Total: 30 categories now (was 28)
+- haiku: 9
+- sonnet: 12 (+2)
+- opus: 9 (renamed `performance` -> `performance_audit`)
+
+### CI behavioral tests added
+Three new tests in `.github/workflows/preflight.yml`:
+- "investigate the performance bottleneck..." -> sonnet
+- "audit authentication performance across microservices" -> opus
+- "trace execution of fetchUser and walk me through it" -> sonnet
+
+Category-count check relaxed from `=== 28` to `>= 28` so future
+`/learn-promoted` additions don't break CI.
+
+### Error visibility in hooks (T2.4)
+
+New module **`scripts/lib/error-log.js`** following the same pattern as
+`learn-log.js`: append-only JSONL, auto-trim to 200 entries, summarize
+helper.
+
+Wired into the main catch blocks of all four hook scripts:
+- `analyze-complexity.js` (UserPromptSubmit)
+- `enforce-stats.js` (Stop)
+- `detect-fallback.js` (SubagentComplete)
+- `runtime-check.js` (SessionStart)
+
+When a hook caught an exception, the error is:
+1. Written to `logs/hook-errors.jsonl` with timestamp, script, phase,
+   message, stack, and a preview of the input that triggered it
+2. For the main `analyze-complexity.js` hook, a visible warning is also
+   emitted to stdout (visible in Claude Code's session context):
+   `[Model Router - ERROR] analyze-complexity.js caught an exception. See logs/hook-errors.jsonl or run /health for details.`
+
+New **`--errors`** special command in the dispatch table. Returns a
+JSON summary: `totalErrors`, `byScript`, `byPhase`, `recent` (last 10).
+Intended for use by `/health` slash command or a future `/errors`
+command.
+
+Previously hook failures were **silent** - users got "always ask"
+behavior with no indication why. Now failures are visible and
+diagnosable.
+
+**.gitignore:** excludes `logs/hook-errors.jsonl` (per-user runtime data).
+
 ## v2.5.0 (first of two PRs: tests + explain)
 
 ### New feature: `/complexity --explain` mode (T2.1)
