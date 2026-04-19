@@ -9,110 +9,68 @@
 var fs = require("fs");
 var path = require("path");
 var io = require("./lib/io");
-var sleep = require("./lib/sleep");
+var atomicIo = require("./lib/atomic-io");
 
 // Consolidated: path constants imported from io.js (single source of truth)
 var LOGS_DIR = path.join(io.BASE_DIR, "logs");
 var SESSION_PATH = io.getSessionPath();
-var LOCK_PATH = SESSION_PATH + ".lock";
 var USAGE_LOG_PATH = io.getLogPath();
 var CONFIG_PATH = io.getConfigPath();
 
-// C1: File lock for session-state.json to prevent race conditions with log-subagent.js
-var LOCK_TIMEOUT_MS = 3000;
-var LOCK_RETRY_MS = 30;
-
-function acquireSessionLock() {
-  var start = Date.now();
-  while (Date.now() - start < LOCK_TIMEOUT_MS) {
-    try {
-      fs.writeFileSync(LOCK_PATH, String(process.pid), { flag: "wx" });
-      return true;
-    } catch (err) {
-      var stat;
-      try { stat = fs.statSync(LOCK_PATH); }
-      catch (e) { sleep.sleepSync(LOCK_RETRY_MS); continue; }
-
-      if (Date.now() - stat.mtimeMs > 10000) {
-        // Only force-remove if the owning PID is verifiably dead
-        var pidDead = false;
-        var pidKnown = false;
-        try {
-          var raw = fs.readFileSync(LOCK_PATH, "utf8");
-          var lockPid = parseInt(raw, 10);
-          if (lockPid && !isNaN(lockPid)) {
-            pidKnown = true;
-            try { process.kill(lockPid, 0); } catch (e) { pidDead = true; }
-          }
-        } catch (e) { /* unreadable; wait another cycle rather than force-remove */ }
-        if (pidDead || !pidKnown) {
-          try { fs.unlinkSync(LOCK_PATH); } catch (e) {}
-        }
-        continue;
-      }
-      sleep.sleepSync(LOCK_RETRY_MS);
-    }
-  }
-  return false;
-}
-
-function releaseSessionLock() {
-  try { fs.unlinkSync(LOCK_PATH); } catch (e) {}
-}
+// v3.0.0: Replaced the manual spin-lock + PID-check with atomic-io's
+// optimistic concurrency model. Compared to the previous approach:
+// * No lock file, no stale-lock scenarios
+// * No PID-alive check (unreliable on Windows)
+// * Bounded wall-clock (~2s max) via atomic-io's retry limits
+// * Data-preserving merge still happens inside the mergeFn callback
+//
+// Kept as no-op wrappers so external callers (if any) still work.
+function acquireSessionLock() { return true; }
+function releaseSessionLock() { /* no-op */ }
 
 function ensureLogDir() {
   if (!fs.existsSync(LOGS_DIR)) { fs.mkdirSync(LOGS_DIR, { recursive: true }); }
 }
 
 function loadSessionState() {
-  try {
-    if (!fs.existsSync(SESSION_PATH)) return null;
-    return JSON.parse(fs.readFileSync(SESSION_PATH, "utf8").replace(/^\uFEFF/, ""));
-  } catch (err) { return null; }
+  return atomicIo.safeReadJson(SESSION_PATH);
 }
 
 function saveSessionState(state) {
-  var locked = acquireSessionLock();
-  try {
-    ensureLogDir();
-    // Merge with current file contents to prevent lost updates from concurrent writes
-    try {
-      if (fs.existsSync(SESSION_PATH)) {
-        var current = JSON.parse(fs.readFileSync(SESSION_PATH, "utf8").replace(/^\uFEFF/, ""));
-        // Preserve counter fields from disk if they are higher (another process may have incremented)
-        if (current && typeof current === "object") {
-          ["modelCounts", "subagentCounts"].forEach(function(key) {
-            if (current[key] && state[key]) {
-              ["haiku", "sonnet", "opus"].forEach(function(m) {
-                if (typeof current[key][m] === "number" && typeof state[key][m] === "number") {
-                  state[key][m] = Math.max(state[key][m], current[key][m]);
-                }
-              });
-            }
-          });
-          // Keep skills merged from both sources with Math.max for counters
-          if (current.skillsUsed && state.skillsUsed) {
-            Object.keys(current.skillsUsed).forEach(function(k) {
-              if (!state.skillsUsed[k]) {
-                state.skillsUsed[k] = current.skillsUsed[k];
-              } else if (typeof current.skillsUsed[k] === "number" && typeof state.skillsUsed[k] === "number") {
-                state.skillsUsed[k] = Math.max(state.skillsUsed[k], current.skillsUsed[k]);
-              }
-            });
+  ensureLogDir();
+
+  // Merge function runs inside atomic-io's retry loop. On each attempt it
+  // sees the freshest disk state and produces a merged version that preserves
+  // higher counter values from disk (lost-update prevention).
+  var result = atomicIo.atomicMergeJson(SESSION_PATH, function(current) {
+    if (!current || typeof current !== "object") return state;
+
+    // Preserve higher counter fields from disk (another process may have
+    // incremented them since we computed `state`).
+    ["modelCounts", "subagentCounts"].forEach(function(key) {
+      if (current[key] && state[key]) {
+        ["haiku", "sonnet", "opus"].forEach(function(m) {
+          if (typeof current[key][m] === "number" && typeof state[key][m] === "number") {
+            state[key][m] = Math.max(state[key][m], current[key][m]);
           }
-        }
+        });
       }
-    } catch (mergeErr) {
-      // If merge fails, proceed with the state as-is
+    });
+    // Merge skillsUsed: keep the higher count per skill
+    if (current.skillsUsed && state.skillsUsed) {
+      Object.keys(current.skillsUsed).forEach(function(k) {
+        if (!state.skillsUsed[k]) {
+          state.skillsUsed[k] = current.skillsUsed[k];
+        } else if (typeof current.skillsUsed[k] === "number" && typeof state.skillsUsed[k] === "number") {
+          state.skillsUsed[k] = Math.max(state.skillsUsed[k], current.skillsUsed[k]);
+        }
+      });
     }
-    var tmpPath = SESSION_PATH + "." + process.pid + ".tmp";
-    fs.writeFileSync(tmpPath, JSON.stringify(state));
-    fs.renameSync(tmpPath, SESSION_PATH);
-  } catch (err) {
-    process.stderr.write("[Model Router] Session save error: " + err.message + "\n");
-    try { fs.unlinkSync(SESSION_PATH + "." + process.pid + ".tmp"); } catch (e) {}
-  } finally {
-    if (locked) releaseSessionLock();
+    return state;
+  }, {});
+
+  if (!result.ok) {
+    process.stderr.write("[Model Router] Session save error (atomic-io): " + (result.error || "unknown") + "\n");
   }
 }
 

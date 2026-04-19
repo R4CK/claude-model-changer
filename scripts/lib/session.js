@@ -149,18 +149,23 @@ function getPromptHistoryBoost(prompt, sessionId, config) {
   } catch (e) { return { boost: 0 }; }
 }
 
-function updatePromptHistory(state, prompt, model, category) {
+// v3.0.0: configurable window size (default 3)
+var DEFAULT_HISTORY_WINDOW = 3;
+
+function updatePromptHistory(state, prompt, model, category, config) {
   if (!state.recentPrompts) state.recentPrompts = [];
+  var maxHistory = DEFAULT_HISTORY_WINDOW;
+  if (config && config.promptHistory && typeof config.promptHistory.window === "number") {
+    maxHistory = Math.max(1, Math.min(20, config.promptHistory.window));
+  }
+  // v3.0.0: proactive cap - shift-before-push to prevent transient growth
+  while (state.recentPrompts.length >= maxHistory) state.recentPrompts.shift();
   state.recentPrompts.push({
     words: extractTopicWords(prompt),
     model: model,
     category: category || "unknown",
     timestamp: new Date().toISOString()
   });
-  // Keep only last 3
-  if (state.recentPrompts.length > 3) {
-    state.recentPrompts = state.recentPrompts.slice(-3);
-  }
   return state;
 }
 

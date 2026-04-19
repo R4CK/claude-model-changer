@@ -1,5 +1,84 @@
 # Changelog
 
+## v3.0.0 — Architecture refactor (concurrency-safe + hot-reload)
+
+Major release addressing the architectural concerns from the v2.5.0 audit.
+No breaking changes to the user-visible API: hook output, config schema,
+slash commands, and routing behavior are identical. Only internal storage
+and cache mechanisms changed.
+
+### New: `scripts/lib/atomic-io.js` (zero-dep primitive)
+
+Replaces the manual spin-lock + PID-check in session-utils / detect-fallback
+with **optimistic concurrency**:
+
+* `atomicWriteJson(path, data)` — write-to-temp + rename. Atomic on POSIX
+  and Windows. Readers never see partial files.
+* `atomicMergeJson(path, mergeFn, default)` — read-modify-write with bounded
+  retry. If another process wrote between read-and-write, retry up to 5
+  times with exponential backoff (10ms -> 200ms, total wall clock <= 2s).
+* `atomicAppendJsonLine(path, entry)` — convenience wrapper for JSONL logs.
+* `safeReadJson(path)` — read-or-null, strips BOM, never throws.
+
+**Race test passed:** 10 parallel hook invocations against the same session
+state file produce correct `modelCounts: { haiku: 10 }` with no corruption,
+no lost updates.
+
+### session-utils.js rewrite
+
+* Removed spin-lock (`acquireSessionLock` / `releaseSessionLock` kept as no-op
+  stubs for backward compatibility with external callers).
+* Removed PID-alive check (`process.kill(pid, 0)` is unreliable on Windows
+  and was causing false-dead diagnoses).
+* `saveSessionState` now delegates to `atomicIo.atomicMergeJson` with the
+  counter-merge logic (Math.max per model) living inside the mergeFn callback.
+* Wall-clock bounded: max 2 seconds under contention (was previously 3 seconds
+  with potential stale-lock scenarios on top).
+
+### Config hot-reload
+
+`scripts/lib/config.js` caches are now **mtime-invalidated**:
+
+* On every `loadConfig(cwd)`, the cache computes a signature of the 3 input
+  files' mtimes + sizes. If any differs from the cached signature, reparse.
+* `clearConfigCache()` exported for explicit invalidation (useful in tests
+  and if the user manually tweaks config mid-session).
+* Previously the config was cached for the entire process lifetime. Now
+  edits to `task-routing.json`, `learned-keywords.json`, or
+  `.claude/model-routing.json` take effect on the **next prompt** with no
+  session restart required.
+
+### Prompt history proactive cap
+
+`scripts/lib/session.js:updatePromptHistory`: shift-before-push instead
+of slice-after-push (same pattern as the v2.5.1 fix for recentAutoRoutes).
+History window is now configurable via `config.promptHistory.window`
+(default 3, min 1, max 20).
+
+### New tests (+19 for v3.0.0; 79 total)
+
+* `tests/atomic-io.test.js` — 13 tests covering write/read/merge/append,
+  default-on-missing, mtime-based concurrency detection, BOM stripping,
+  mergeFn error handling, counter-max semantics, parent-dir auto-creation.
+* `tests/config-hot-reload.test.js` — 6 tests covering cache-reuse,
+  mtime-based invalidation, explicit clearConfigCache, signature stability
+  and difference detection.
+
+### Backward compatibility
+
+All previous callers of `session.loadSessionState` / `saveSessionState`
+work unchanged — same signatures, same semantics, just more robust
+internals. External scripts that called `acquireSessionLock` (none that we
+know of) still get `true` returned.
+
+### Removed legacy primitives
+
+* `scripts/lib/sleep.js` — no longer imported by session-utils after atomic-io
+  replaced the spin-lock. File retained (still used by detect-fallback's own
+  logic) but the dependency graph is now cleaner.
+
+Version sync 2.7.0 -> 3.0.0.
+
 ## v2.7.0 — Effort integration
 
 Adds a second routing dimension alongside model selection: **Effort** level
