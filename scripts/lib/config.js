@@ -9,12 +9,40 @@ var path = require("path");
 var io = require("./io");
 var configMigrate = require("./config-migrate");
 
-// Config cache: avoids re-reading and re-parsing on every call within same process
+// Config cache with mtime-based invalidation (v3.0.0).
+// Key: cwd or "__base__"; Value: { config, mtimeSignature, loadedAt }
+// Signature is built from all 3 input files' mtimes so any edit invalidates.
 var _configCache = {};
+
+function _computeMtimeSignature(cwd) {
+  var parts = [];
+  var paths = [io.getConfigPath(), io.getLearnedConfigPath()];
+  if (cwd) paths.push(path.join(cwd, ".claude", "model-routing.json"));
+  for (var i = 0; i < paths.length; i++) {
+    try {
+      var st = fs.statSync(paths[i]);
+      parts.push(paths[i] + "@" + st.mtimeMs + ":" + st.size);
+    } catch (e) {
+      parts.push(paths[i] + "@missing");
+    }
+  }
+  return parts.join("|");
+}
+
+// Explicit cache-invalidation API (useful for tests and forced reloads)
+function clearConfigCache() {
+  _configCache = {};
+}
 
 function loadConfig(cwd) {
   var cacheKey = cwd || "__base__";
-  if (_configCache[cacheKey] !== undefined) return _configCache[cacheKey];
+  // v3.0.0: hot-reload. Re-check input-file mtimes on every call; reuse the
+  // cached parsed config only if the signature still matches.
+  var currentSig = _computeMtimeSignature(cwd);
+  var cached = _configCache[cacheKey];
+  if (cached && cached.mtimeSignature === currentSig) {
+    return cached.config;
+  }
 
   var baseConfig = null;
   var configCorrupt = false;
@@ -69,7 +97,11 @@ function loadConfig(cwd) {
     process.stderr.write("[Model Router] Config warnings:\n  - " + errors.join("\n  - ") + "\n");
   }
 
-  _configCache[cacheKey] = baseConfig;
+  _configCache[cacheKey] = {
+    config: baseConfig,
+    mtimeSignature: currentSig,
+    loadedAt: Date.now()
+  };
   return baseConfig;
 }
 
@@ -154,5 +186,9 @@ function deepMerge(target, source) {
 module.exports = {
   loadConfig: loadConfig,
   validateConfig: validateConfig,
-  deepMerge: deepMerge
+  deepMerge: deepMerge,
+  clearConfigCache: clearConfigCache,  // v3.0.0: force cache flush
+  _internal: {
+    computeMtimeSignature: _computeMtimeSignature
+  }
 };

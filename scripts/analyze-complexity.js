@@ -554,7 +554,7 @@ process.stdin.on("end", function() {
     updatedState.sessionId = sessionId;
     updatedState.lastModel = result.model;
     updatedState.topicWords = session.extractTopicWords(prompt);
-    session.updatePromptHistory(updatedState, prompt, result.model, result.matchedCategory);
+    session.updatePromptHistory(updatedState, prompt, result.model, result.matchedCategory, config);
     updatedState.timestamp = new Date().toISOString();
     if (result.autoRoute) {
       // v2.5.1: proactive cap. Push then immediately shift if at limit, so the
