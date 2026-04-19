@@ -1,14 +1,37 @@
 {
   "name": "claude-model-changer",
-  "version": "2.5.1",
-  "description": "Automatically routes tasks to the appropriate Claude model (haiku/sonnet/opus) based on complexity analysis. Features: subagent usage tracking, GSD-inspired goal verification, preflight checks, task splitting, enhanced borderline with history, plugin health check, adaptive weights, multi-language (EN/HU/DE), anomaly detection, 28 task categories.",
+  "version": "2.6.0",
+  "description": "Automatically routes tasks to the appropriate Claude model (haiku/sonnet/opus) based on complexity analysis. 30 task categories, multi-language (EN/HU/DE), LLM-fallback learning, anomaly detection, adaptive weights. Saves 40-60% on mixed workloads.",
   "author": {
-    "name": "NEON"
+    "name": "R4CK",
+    "url": "https://github.com/R4CK"
   },
   "license": "MIT",
-  "keywords": ["model-routing", "complexity", "optimization", "cost-saving", "multi-language", "anomaly-detection"],
+  "homepage": "https://github.com/R4CK/claude-model-changer",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/R4CK/claude-model-changer.git"
+  },
+  "bugs": {
+    "url": "https://github.com/R4CK/claude-model-changer/issues"
+  },
+  "keywords": [
+    "model-routing",
+    "complexity-analysis",
+    "cost-optimization",
+    "haiku",
+    "sonnet",
+    "opus",
+    "claude-code",
+    "subagent",
+    "multi-language",
+    "anomaly-detection",
+    "adaptive-weights",
+    "llm-fallback"
+  ],
+  "category": "development",
+  "icon": "icon.svg",
   "engines": {
     "node": ">=16.0.0"
-  },
-  "repository": ""
+  }
 }

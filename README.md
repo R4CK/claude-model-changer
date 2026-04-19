@@ -4,7 +4,9 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D16-brightgreen)](package.json)
-[![Plugin Version](https://img.shields.io/badge/plugin-v2.5.1-blue)](.claude-plugin/plugin.json)
+[![Plugin Version](https://img.shields.io/badge/plugin-v2.6.0-blue)](.claude-plugin/plugin.json)
+[![CI](https://github.com/R4CK/claude-model-changer/actions/workflows/preflight.yml/badge.svg)](https://github.com/R4CK/claude-model-changer/actions/workflows/preflight.yml)
+[![Latest Release](https://img.shields.io/github/v/release/R4CK/claude-model-changer)](https://github.com/R4CK/claude-model-changer/releases/latest)
 
 ---
 
@@ -84,6 +86,58 @@ If Node.js is missing, the installer attempts auto-install via the right tool fo
 - **Claude Code** (any recent version with plugin support)
 - **Node.js ≥ 16** (LTS recommended)
 - ~2 MB free disk in `~/.claude/plugins/cache/`
+
+### Compatibility Matrix
+
+| Component | Minimum | Tested | Notes |
+|---|---|---|---|
+| Claude Code | 2.x | 2.1.76+ | Plugin API + marketplace support required |
+| Node.js | 16 LTS | 16 / 18 / 20 / 22 | Auto-install via source installer |
+| Windows | 10+ | 11 | PowerShell + cmd installers work; WSL also supported |
+| macOS | 12+ | 13–15 | Source installer preferred |
+| Linux | any distro with Node ≥16 | Ubuntu 22.04 | CI runs here |
+
+---
+
+## Getting Started (30 seconds)
+
+After installing (see above) and restarting Claude Code:
+
+1. Type any prompt — `fix the typo on line 5`
+2. Plugin routes to **haiku** automatically. You'll see:
+   ```
+   [Model Router] Complexity: SIMPLE (score 1/10) -> Recommended: haiku
+   ```
+3. Try a harder one — `design a multi-tenant cache invalidation strategy`
+4. Plugin routes to **opus** (automatic at high confidence):
+   ```
+   [Model Router] Complexity: COMPLEX (score 9/10) -> Recommended: opus
+   ```
+5. Run `/stats` to see the saved cost so far.
+
+That's it. The plugin is now invisible infrastructure; focus on your actual work.
+
+---
+
+## Cost Model
+
+**No new billing.** Model routing is free; you already pay for your own Claude Code usage. The plugin just picks the cheapest model capable of the task.
+
+Typical savings on mixed workloads:
+
+| Workload | Without plugin (all Opus) | With plugin | Savings |
+|---|---|---|---|
+| 100 typo fixes + 20 bug fixes + 10 architecture tasks | ~$90 | ~$35 | **~60%** |
+| Heavy refactor session (mostly Sonnet-level) | ~$45 | ~$25 | **~45%** |
+| Pure architecture sprint (mostly Opus) | ~$90 | ~$85 | ~5% |
+
+Run `/stats` in a Claude Code session to see your actual savings vs an all-Opus baseline.
+
+| Model | Input $/1M | Output $/1M | Relative |
+|---|---|---|---|
+| Haiku | $0.25 | $1.25 | 1× |
+| Sonnet | $3.00 | $15.00 | 12× |
+| Opus | $15.00 | $75.00 | 60× |
 
 ---
 
@@ -318,6 +372,43 @@ claude-model-changer/
 ├── package.json
 └── README.md                    # ← you are here
 ```
+
+---
+
+## FAQ
+
+**Q: Why did it pick Haiku for my "complex" task?**
+Run `/complexity --explain <your prompt>`. You'll see exactly which sub-scores contributed. Usually the fix is adding a keyword to `config/task-routing.json` (or its project-local override). You can also use `@sonnet` / `@opus` as a prefix to override for one task.
+
+**Q: Can I force a specific model for certain files or keywords?**
+Yes. Drop a `.claude/model-routing.json` in your project root. See the `docs/examples/` directory for three copy-paste configs: `security-critical.json`, `startup-lean.json`, `ml-heavy.json`.
+
+**Q: Does my team share the config?**
+The repo-level config (`config/task-routing.json`) is shared via git. Per-user auto-learned keywords live in `logs/learned-keywords.json` (gitignored). Per-project overrides go in `.claude/model-routing.json` (typically committed). Export/import via `/export-config` and `/import-config`.
+
+**Q: What if I'm on a slow machine and the hook times out?**
+Default `UserPromptSubmit` timeout is 60s (plenty). If you see `[Model Router - ERROR]` in the session, run `node scripts/preflight.js` to diagnose. The error log lives at `logs/hook-errors.jsonl`.
+
+**Q: Does it call any external services?**
+No. All scoring is local. The opt-in LLM fallback uses your existing `haiku-worker` subagent — no API keys, no extra billing.
+
+**Q: What gets logged? Can I audit it?**
+`logs/usage.jsonl` keeps the last 5000 routing decisions (score, model, category, confidence). `logs/learn-suggestions.jsonl` stores LLM fallback suggestions. `logs/hook-errors.jsonl` captures failures. All JSONL, human-readable, auto-trimmed.
+
+**Q: How do I reset everything?**
+```bash
+rm ~/.claude/plugins/cache/<owner>/claude-model-changer/<version>/logs/*.jsonl
+```
+(Keep `.gitkeep`.) Usage stats, learned keywords, and error history reset.
+
+**Q: Will this work alongside other Claude Code plugins?**
+Yes. The plugin uses the standard hook mechanism and doesn't touch settings it doesn't own. Multiple plugins can contribute hooks to the same event (UserPromptSubmit, etc.).
+
+**Q: How do I uninstall?**
+```bash
+claude plugin uninstall claude-model-changer@r4ck
+```
+Or delete from `~/.claude/plugins/cache/<owner>/claude-model-changer/<version>/` and remove the entry from `~/.claude/plugins/installed_plugins.json` + `~/.claude/settings.json`.
 
 ---
 

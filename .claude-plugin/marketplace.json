@@ -7,14 +7,15 @@
   },
   "metadata": {
     "description": "Personal marketplace hosting the Claude Model Changer plugin and related tooling",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "repository": "https://github.com/R4CK/claude-model-changer",
     "homepage": "https://github.com/R4CK/claude-model-changer"
   },
   "plugins": [
     {
       "name": "claude-model-changer",
-      "version": "2.5.1",
+      "version": "2.6.0",
+      "icon": "./.claude-plugin/icon.svg",
       "description": "Automatic Claude model routing (haiku/sonnet/opus) based on task complexity. 28 task categories, 4 hooks, multi-language detection (EN/HU/DE), anomaly detection, usage stats, and a /configure wizard. Saves cost on simple tasks; reserves opus for hard ones.",
       "category": "development",
       "source": "./",

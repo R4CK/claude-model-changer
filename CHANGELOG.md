@@ -1,5 +1,45 @@
 # Changelog
 
+## v2.6.0
+
+Distribution polish. No behavior changes; focuses on first-time user
+experience, metadata completeness for marketplace discovery, and
+copy-paste example configs.
+
+### Plugin metadata
+* `.claude-plugin/icon.svg` (NEW): 128x128 SVG icon for marketplace listing.
+  Simple 3-tier representation (haiku/sonnet/opus stacked rectangles).
+* `.claude-plugin/plugin.json`: added `homepage`, structured `repository`
+  and `bugs` fields, `category: "development"`, `icon` reference, and
+  `author.url`. Keywords expanded from 6 to 12.
+* `.claude-plugin/marketplace.json`: bumped metadata version to 1.1.0,
+  added `icon` field to plugin entry.
+
+### README polish
+* New **Compatibility Matrix** section (Claude Code / Node / OS).
+* New **Getting Started (30 seconds)** section - 5 steps from install to
+  first visible saving via `/stats`.
+* New **Cost Model** section with concrete savings table and per-model
+  pricing reference. Removes "what does this cost me?" ambiguity.
+* New **FAQ** section with 8 questions covering: routing overrides,
+  project-local config, team sharing, hook timeouts, external services,
+  audit logs, reset, coexistence with other plugins, uninstall.
+* Badges expanded: CI status + Latest Release added alongside existing
+  license / Node / plugin-version.
+
+### Example configs (docs/examples/)
+* `security-critical.json`: opus-first for auth/payment/crypto keywords,
+  disables auto-routing, safeMode=true, quality-first profile.
+* `startup-lean.json`: cost-saver profile, expanded haiku auto range
+  (1-4 instead of 1-2), tight daily budgets, aggressive rate-limiting.
+* `ml-heavy.json`: ML-specific opus categories (ml_design, algorithm_choice),
+  sonnet notebook_work category, LLM fallback + auto-apply enabled with
+  lower threshold (3 instead of 5) for faster vocab growth.
+
+### Version sync
+2.5.1 -> 2.6.0 across plugin.json / package.json / marketplace.json /
+dist/README.md / README badge.
+
 ## v2.5.1
 
 Three post-audit code-review fixes. No behavior changes for normal inputs;

@@ -1,0 +1,65 @@
+{
+  "_description": "ML / data-science heavy project. Promotes algorithm/performance/architecture tasks to opus with higher confidence, adds ML-specific keywords, enables LLM fallback with auto-apply for rapid keyword vocabulary growth. Copy to .claude/model-routing.json.",
+  "preferenceProfile": "quality-first",
+  "models": {
+    "opus": {
+      "categories": {
+        "ml_design": {
+          "label": "ML model design",
+          "keywords": [
+            "design model",
+            "training pipeline",
+            "loss function",
+            "hyperparameter tuning",
+            "neural architecture",
+            "feature engineering at scale",
+            "data augmentation strategy",
+            "distributed training"
+          ]
+        },
+        "algorithm_choice": {
+          "label": "Algorithm selection",
+          "keywords": [
+            "which algorithm",
+            "compare algorithms",
+            "complexity analysis",
+            "big o",
+            "time complexity",
+            "space complexity"
+          ]
+        }
+      }
+    },
+    "sonnet": {
+      "categories": {
+        "notebook_work": {
+          "label": "Jupyter / notebook work",
+          "keywords": [
+            "jupyter",
+            "notebook",
+            "pandas",
+            "numpy operation",
+            "data exploration",
+            "eda",
+            "plot",
+            "visualize dataset"
+          ]
+        }
+      }
+    }
+  },
+  "autoMode": {
+    "enabled": true,
+    "llmFallback": {
+      "enabled": true,
+      "_comment": "ML projects often use jargon; let Haiku-classify unknown terms and log them"
+    }
+  },
+  "learn": {
+    "autoApply": {
+      "enabled": true,
+      "minOccurrences": 3,
+      "_comment": "Aggressive auto-apply (3 instead of default 5) - ML vocab grows fast"
+    }
+  }
+}

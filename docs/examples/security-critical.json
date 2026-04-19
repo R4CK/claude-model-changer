@@ -1,0 +1,46 @@
+{
+  "_description": "Security-critical project override. Forces Opus on auth/payment/crypto touches. Disables auto-routing to require human confirmation on every decision. Copy to .claude/model-routing.json in your project root.",
+  "models": {
+    "opus": {
+      "categories": {
+        "critical_path": {
+          "label": "Critical security path",
+          "keywords": [
+            "auth module",
+            "authentication",
+            "authorization",
+            "payment",
+            "billing",
+            "credit card",
+            "encryption",
+            "decrypt",
+            "token generation",
+            "secret",
+            "credential",
+            "password",
+            "2fa",
+            "mfa",
+            "session key",
+            "crypto",
+            "signing"
+          ]
+        }
+      }
+    }
+  },
+  "autoMode": {
+    "enabled": false,
+    "_comment": "Every prompt requires explicit user confirmation - no silent auto-routing in security-critical contexts"
+  },
+  "safeMode": true,
+  "preferenceProfile": "quality-first",
+  "budgets": {
+    "enabled": true,
+    "_comment": "Generous budget since opus usage is expected for this profile",
+    "limits": {
+      "opus": { "daily": 500000, "weekly": 3000000 },
+      "sonnet": { "daily": 300000, "weekly": 2000000 },
+      "haiku": { "daily": 100000, "weekly": 700000 }
+    }
+  }
+}
