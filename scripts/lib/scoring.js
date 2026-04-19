@@ -51,10 +51,14 @@ function scoreKeywordsEngine(promptLower, config, lang) {
 
   ["opus", "sonnet", "haiku"].forEach(function(modelName) {
     var modelDef = config.models[modelName];
-    if (!modelDef || !modelDef.categories) return;
-    Object.entries(modelDef.categories).forEach(function(pair) {
-      var catKey = pair[0];
-      var catDef = pair[1];
+    if (!modelDef || !modelDef.categories || typeof modelDef.categories !== "object") return;
+    // v2.5.1: use Object.keys + own-property check to avoid prototype-pollution
+    // and non-enumerable surprises. Symbol properties and inherited keys are
+    // ignored - only plain own keys are iterated.
+    Object.keys(modelDef.categories).forEach(function(catKey) {
+      if (!Object.prototype.hasOwnProperty.call(modelDef.categories, catKey)) return;
+      var catDef = modelDef.categories[catKey];
+      if (!catDef || typeof catDef !== "object") return;
 
       // Position-weighted keyword matching: keywords in the first 30% get 1.5x effective length
       function addMatch(kwLower, modelName, catLabel) {

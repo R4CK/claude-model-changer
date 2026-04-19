@@ -14,7 +14,7 @@
   "plugins": [
     {
       "name": "claude-model-changer",
-      "version": "2.5.0",
+      "version": "2.5.1",
       "description": "Automatic Claude model routing (haiku/sonnet/opus) based on task complexity. 28 task categories, 4 hooks, multi-language detection (EN/HU/DE), anomaly detection, usage stats, and a /configure wizard. Saves cost on simple tasks; reserves opus for hard ones.",
       "category": "development",
       "source": "./",

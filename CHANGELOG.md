@@ -1,5 +1,23 @@
 # Changelog
 
+## v2.5.1
+
+Three post-audit code-review fixes. No behavior changes for normal inputs;
+hardens edge cases found by chaos-engineer + code-reviewer skill reviews.
+
+* **Fix 1 (CRITICAL)** — `scripts/lib/scoring.js:52`: replaced `Object.entries()`
+  with `Object.keys() + hasOwnProperty` check to prevent prototype-pollution
+  and Symbol-key surprises when iterating `config.models.<x>.categories`.
+  Now also type-checks `catDef` is a plain object before use.
+* **Fix 2 (WARNING)** — `scripts/analyze-complexity.js:541-543`: `recentAutoRoutes`
+  cap is now proactive (shift-before-push) instead of reactive (slice after).
+  The array can no longer transiently exceed 20 items during save contention.
+* **Fix 3 (WARNING)** — `scripts/lib/error-log.js:logHookError()`: explicit
+  Error-object serialization before `JSON.stringify` (Error.message/stack are
+  non-enumerable, circular refs would previously break silent). Added nested
+  fallback entry if stringify fails, plus stderr signal when error-logging
+  itself self-fails (previously completely invisible).
+
 ## v2.5.0 (second of two PRs: config completeness + error visibility)
 
 ### New categories (T2.3)
