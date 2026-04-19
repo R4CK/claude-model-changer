@@ -46,22 +46,54 @@ function ensureLogsDir() {
 function logHookError(entry) {
   try {
     ensureLogsDir();
+    // v2.5.1: explicit serialization. Error objects are not JSON-serializable
+    // by default (message/stack are non-enumerable), and circular refs would
+    // break JSON.stringify. Always convert to a plain object upfront.
     var errObj = entry.error || new Error("unknown");
-    var msg = (typeof errObj === "string") ? errObj : (errObj.message || String(errObj));
-    var stack = (typeof errObj === "object" && errObj.stack) ? errObj.stack : "";
+    var msg;
+    var stack = "";
+    if (typeof errObj === "string") {
+      msg = errObj;
+    } else if (errObj instanceof Error) {
+      msg = errObj.message || String(errObj);
+      stack = errObj.stack || "";
+    } else {
+      // Unknown shape - try toString, then JSON, then fallback
+      try {
+        msg = (errObj && errObj.message) ? errObj.message : JSON.stringify(errObj);
+      } catch (serializeErr) {
+        msg = String(errObj);
+      }
+      if (errObj && typeof errObj === "object" && errObj.stack) stack = String(errObj.stack);
+    }
     var record = {
       timestamp: new Date().toISOString(),
-      script: entry.script || "unknown",
-      phase: entry.phase || "unknown",
+      script: String(entry.script || "unknown"),
+      phase: String(entry.phase || "unknown"),
       message: msg.substring(0, MAX_MSG_LEN),
       stack: stack ? stack.substring(0, MAX_STACK_LEN) : "",
       inputPreview: entry.input ? String(entry.input).substring(0, MAX_INPUT_PREVIEW).replace(/\n/g, " ") : "",
-      sessionId: entry.sessionId || ""
+      sessionId: String(entry.sessionId || "")
     };
-    fs.appendFileSync(getLogPath(), JSON.stringify(record) + "\n", "utf8");
+    var line;
+    try {
+      line = JSON.stringify(record);
+    } catch (stringifyErr) {
+      // If stringify still fails (shouldn't after our explicit conversion),
+      // write a minimal fallback entry so the failure is at least visible.
+      line = JSON.stringify({
+        timestamp: new Date().toISOString(),
+        script: String(entry.script || "unknown"),
+        phase: "error-log-serialize-failed",
+        message: "logHookError could not serialize: " + (stringifyErr.message || String(stringifyErr))
+      });
+    }
+    fs.appendFileSync(getLogPath(), line + "\n", "utf8");
     trim();
   } catch (e) {
     // Silent fail - error logging itself must never cascade a failure.
+    // But surface to stderr so we notice during local development.
+    try { process.stderr.write("[error-log] self-failure: " + (e.message || e) + "\n"); } catch (x) {}
   }
 }
 

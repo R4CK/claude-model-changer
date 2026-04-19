@@ -538,9 +538,12 @@ process.stdin.on("end", function() {
     session.updatePromptHistory(updatedState, prompt, result.model, result.matchedCategory);
     updatedState.timestamp = new Date().toISOString();
     if (result.autoRoute) {
+      // v2.5.1: proactive cap. Push then immediately shift if at limit, so the
+      // array never grows beyond 20 even transiently. Previous slice(-20) was
+      // reactive and allowed brief unbounded growth during save contention.
       if (!updatedState.recentAutoRoutes) updatedState.recentAutoRoutes = [];
+      if (updatedState.recentAutoRoutes.length >= 20) updatedState.recentAutoRoutes.shift();
       updatedState.recentAutoRoutes.push({ timestamp: new Date().toISOString(), model: result.model });
-      if (updatedState.recentAutoRoutes.length > 20) updatedState.recentAutoRoutes = updatedState.recentAutoRoutes.slice(-20);
     }
     if (!isDryRun) session.saveSessionState(updatedState);
     if (!isDryRun) writeStatusFile(result, contextUsage, budget, anomalies, apiLimits, updatedState);
