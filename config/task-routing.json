@@ -939,6 +939,39 @@
       ]
     }
   },
+  "effort": {
+    "enabled": true,
+    "emitInOutput": true,
+    "emitInSubagentHint": true,
+    "defaultLevel": "medium",
+    "rules": {
+      "highCategories": [
+        "architecture",
+        "security",
+        "planning",
+        "system_design",
+        "performance_audit",
+        "large_refactoring",
+        "multi_file_work",
+        "algorithms",
+        "tech_debt"
+      ],
+      "lowCategories": [
+        "typo_fix",
+        "formatting",
+        "rename",
+        "comments",
+        "status",
+        "imports",
+        "search_list"
+      ],
+      "lowConfidenceThreshold": 40,
+      "multiFileThreshold": 4,
+      "structuralHighThreshold": 6,
+      "lowEffortConfidenceThreshold": 70
+    },
+    "_comment": "Effort = reasoning/thinking budget (Low/Medium/High) the model should use. Orthogonal to model selection. The plugin SUGGESTS effort in the hook output; the user/Claude decides whether to follow it via the UI Effort control (Ctrl+E in Claude Code). Per-category override: add 'defaultEffort' field to any models.<model>.categories.<key> object."
+  },
   "goalVerification": {
     "enabled": true,
     "minRatingsPerPair": 5,
