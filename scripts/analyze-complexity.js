@@ -255,6 +255,23 @@ function analyzeComplexity(prompt, config, cwd, sessionId) {
     }
   }
 
+  // v2.7.0: determine Effort (reasoning budget suggestion)
+  // Extract categoryKey from keywordResult (if available) for per-category override lookup
+  var effortCategoryKey = null;
+  if (keywordResult && keywordResult.matchedCategory && keywordResult.matchedModel !== "none" && config && config.models) {
+    var md = config.models[keywordResult.matchedModel];
+    if (md && md.categories) {
+      var catKeys = Object.keys(md.categories);
+      for (var cki = 0; cki < catKeys.length; cki++) {
+        if (md.categories[catKeys[cki]].label === keywordResult.matchedCategory) {
+          effortCategoryKey = catKeys[cki];
+          break;
+        }
+      }
+    }
+  }
+  var effortDecision = scoring.determineEffort(subScores, confidence.confidence, keywordResult.matchedCategory, config, effortCategoryKey);
+
   return {
     score: finalScore, rawScore: Math.round(rawScore * 100) / 100, level: level, model: model, override: false,
     matchedCategory: keywordResult.matchedCategory,
@@ -270,6 +287,7 @@ function analyzeComplexity(prompt, config, cwd, sessionId) {
     stickiness: stickiness, confidence: confidence,
     patternMatch: null, detectedLanguage: detectedLanguage, scores: subScores,
     historyBoost: historyBoost,
+    effort: effortDecision,  // v2.7.0: { level: "low"|"medium"|"high", reason: "..." } or null
     // T2.1 (v2.5.0): detailed internals exposed for --explain mode
     explain: {
       wordCount: wordCount, taskType: taskType,
@@ -525,7 +543,8 @@ process.stdin.on("end", function() {
         category: result.matchedCategory, override: result.override, borderline: result.borderline.isBorderline,
         autoRouted: result.autoRoute, projectTypes: result.projectTypes, contextBoost: result.contextBoost,
         confidence: result.confidence.confidence, detectedLanguage: result.detectedLanguage,
-        scores: result.scores, promptPreview: prompt.substring(0, 80).replace(/\n/g, " ")
+        scores: result.scores, promptPreview: prompt.substring(0, 80).replace(/\n/g, " "),
+        effort: result.effort ? result.effort.level : null  // v2.7.0
       });
     }
 
@@ -578,6 +597,12 @@ process.stdin.on("end", function() {
 
     lines.push("Cost: " + costInfo);
     lines.push("Confidence: " + result.confidence.confidence + "% (" + result.confidence.signals + " signals, " + result.confidence.agreement + " agreement)");
+
+    // v2.7.0: Emit Effort recommendation (orthogonal to model - reasoning budget)
+    var effortCfg = config && config.effort;
+    if (effortCfg && effortCfg.enabled !== false && effortCfg.emitInOutput !== false && result.effort && result.effort.level) {
+      lines.push("Effort: " + result.effort.level + " (" + result.effort.reason + ")");
+    }
 
     if (result.detectedLanguage && result.detectedLanguage !== "en") {
       var langNames = { hu: "Hungarian", de: "German" };
@@ -714,10 +739,23 @@ process.stdin.on("end", function() {
 
     lines.push("");
 
+    // v2.7.0: subagent-facing effort hint (what reasoning budget the worker should use)
+    var effortSubagentHint = "";
+    if (effortCfg && effortCfg.enabled !== false && effortCfg.emitInSubagentHint !== false && result.effort && result.effort.level) {
+      var lvl = result.effort.level;
+      if (lvl === "high") {
+        effortSubagentHint = " Use HIGH effort: reason step-by-step, consider edge cases and trade-offs explicitly, walk through your logic.";
+      } else if (lvl === "low") {
+        effortSubagentHint = " Use LOW effort: answer concisely (1-3 lines ideal), no preamble, no caveats unless critical.";
+      } else {
+        effortSubagentHint = " Use MEDIUM effort: normal balance of thoroughness and brevity.";
+      }
+    }
+
     if (isDryRun) {
       lines.push("[DRY RUN] No routing action taken. This was a test analysis only.");
     } else if (result.autoRoute && !result.override) {
-      lines.push("AUTO-ROUTING: High confidence score (" + result.score + "/10). Automatically delegate this task to the **" + result.model + "-worker** agent without asking. Just do it.");
+      lines.push("AUTO-ROUTING: High confidence score (" + result.score + "/10). Automatically delegate this task to the **" + result.model + "-worker** agent without asking. Just do it." + effortSubagentHint);
       lines.push("If the task is trivially simple (like a direct question), you may answer directly without delegating.");
     } else if (result.borderline.isBorderline) {
       // GSD-inspired: Enhanced borderline with historical context

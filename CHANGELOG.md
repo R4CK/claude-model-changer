@@ -1,5 +1,90 @@
 # Changelog
 
+## v2.7.0 — Effort integration
+
+Adds a second routing dimension alongside model selection: **Effort** level
+(Low / Medium / High) represents the reasoning/thinking budget the model
+should use. Orthogonal to model choice; emitted as a hint in the hook output
+and consumed by the subagent workers + the user (Ctrl+E in Claude Code UI).
+
+### New: `scoring.determineEffort()`
+
+Pure function of sub-scores + confidence + matched category + config rules.
+
+| Trigger | Result |
+|---|---|
+| `multiFile >= 4` | HIGH |
+| category in `highCategories` (architecture/security/planning/performance_audit/large_refactoring/multi_file_work/algorithms/tech_debt/system_design) | HIGH |
+| `confidence < 40` WITH keyword match | HIGH |
+| `structure >= 6` (highly structured prompt) | HIGH |
+| category in `lowCategories` (typo_fix/formatting/rename/comments/status/imports/search_list) WITH keyword match | LOW |
+| `wordCount <= 2` AND confident keyword | LOW |
+| everything else | MEDIUM (configurable) |
+
+Per-category explicit override: `defaultEffort: "low"|"medium"|"high"` on any
+`models.<model>.categories.<key>` block always wins over rule-based triggers.
+
+### Hook output
+
+```
+[Model Router] Complexity: COMPLEX (score 9/10) -> Recommended: opus
+Effort: high (category 'architecture' is in highCategories)
+Confidence: 85% (3 signals, high agreement)
+```
+
+### Subagent integration
+
+All three worker agents (`haiku-worker.md`, `sonnet-worker.md`,
+`opus-worker.md`) updated with an "Effort level" guidance block. They
+read the hint from the hook output and adapt their response style:
+- LOW → concise, 1-3 line answers, no preamble
+- MEDIUM → default balanced behavior
+- HIGH → step-by-step reasoning, edge cases, trade-offs explicit
+
+Additionally, when the hook emits an AUTO-ROUTING instruction, it appends
+the effort hint directly: *"Automatically delegate to sonnet-worker.
+Use MEDIUM effort: normal balance of thoroughness and brevity."*
+
+### New config block
+
+```json
+"effort": {
+  "enabled": true,
+  "emitInOutput": true,
+  "emitInSubagentHint": true,
+  "defaultLevel": "medium",
+  "rules": {
+    "highCategories": [...],
+    "lowCategories": [...],
+    "lowConfidenceThreshold": 40,
+    "multiFileThreshold": 4,
+    "structuralHighThreshold": 6,
+    "lowEffortConfidenceThreshold": 70
+  }
+}
+```
+
+### Other additions
+* **`/effort`** slash command - show current config + last 20 decisions
+* **16 new unit tests** in `tests/effort.test.js` covering all triggers,
+  per-category overrides, priority order, and enabled/disabled modes
+* **`/stats`** now reports effort distribution (low/medium/high %)
+* Usage log (`logs/usage.jsonl`) captures `effort` field per entry
+
+### What this enables
+The plugin can now recommend *both* model and effort. A `fix typo` prompt
+gets haiku+low. An `investigate race condition` prompt gets sonnet+high.
+An `audit authentication architecture` prompt gets opus+high. The user
+still controls the UI Effort selector (Ctrl+E), but the plugin now has
+a principled recommendation for each prompt.
+
+### Backward compatibility
+`effort.enabled: false` disables all output/logging of effort; behavior
+then identical to v2.6.0. Existing logs without `effort` field are
+counted as "none" in `/stats` effort distribution.
+
+Version sync 2.6.0 -> 2.7.0.
+
 ## v2.6.0
 
 Distribution polish. No behavior changes; focuses on first-time user

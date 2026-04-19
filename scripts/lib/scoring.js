@@ -332,6 +332,100 @@ function preflightCheck(prompt, score, model, config) {
 // getBorderlineContext moved to ./history.js to remove the scoring <-> io
 // circular dependency. scoring.js now stays a pure function module.
 
+// ---- EFFORT DETERMINATION (v2.7.0) ----
+// Effort = "thinking budget" the model should use (Low / Medium / High).
+// Orthogonal to model selection - pure function of sub-scores + confidence +
+// matched category + config rules. Output is a hint for Claude + the user.
+//
+// Defaults (overridable via config.effort.rules):
+//   HIGH: multi-file work, arch/security/planning categories, low-confidence-
+//         with-match (the scorer found signal but isn't sure - need more
+//         thinking), highly-structured prompts (6+ structure score).
+//   LOW:  trivial categories (typo/formatting/rename/comments/status) with
+//         high confidence (>=70%), OR very short + matched + high confidence.
+//   MEDIUM: everything else (default).
+//
+// Per-category override: if matchedCategoryKey has a `defaultEffort` field
+// in its config, that wins unless config says otherwise.
+
+function slugifyCategory(category) {
+  return String(category || "").toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
+}
+
+var DEFAULT_HIGH_CATEGORIES = [
+  "architecture", "security", "planning", "system_design",
+  "performance_audit", "large_refactoring", "multi_file_work",
+  "algorithms", "tech_debt"
+];
+var DEFAULT_LOW_CATEGORIES = [
+  "typo_fix", "formatting", "rename", "comments", "status",
+  "imports", "search_list"
+];
+
+function determineEffort(scores, confidence, matchedCategory, config, categoryKey) {
+  if (!config || !config.effort || config.effort.enabled === false) {
+    // Feature disabled - return null so callers know not to emit
+    return null;
+  }
+
+  var rules = (config.effort.rules) || {};
+  var highCats = Array.isArray(rules.highCategories) ? rules.highCategories : DEFAULT_HIGH_CATEGORIES;
+  var lowCats = Array.isArray(rules.lowCategories) ? rules.lowCategories : DEFAULT_LOW_CATEGORIES;
+  var lowConfThreshold = typeof rules.lowConfidenceThreshold === "number" ? rules.lowConfidenceThreshold : 40;
+  var multiFileThreshold = typeof rules.multiFileThreshold === "number" ? rules.multiFileThreshold : 4;
+  var structuralHighThreshold = typeof rules.structuralHighThreshold === "number" ? rules.structuralHighThreshold : 6;
+  var highConfForLow = typeof rules.lowEffortConfidenceThreshold === "number" ? rules.lowEffortConfidenceThreshold : 70;
+
+  // Prefer explicit categoryKey (singular form from config) over slugifying
+  // the display label (which may produce wrong plurals: "Typo fixes" -> "typo_fixes"
+  // but config uses "typo_fix").
+  var catSlug = categoryKey ? String(categoryKey).toLowerCase() : slugifyCategory(matchedCategory);
+
+  // Per-category explicit override takes precedence if config exposes it
+  if (categoryKey && config.models) {
+    for (var m = 0; m < 3; m++) {
+      var modelName = ["haiku", "sonnet", "opus"][m];
+      var md = config.models[modelName];
+      if (md && md.categories && md.categories[categoryKey] && md.categories[categoryKey].defaultEffort) {
+        var explicit = String(md.categories[categoryKey].defaultEffort).toLowerCase();
+        if (explicit === "low" || explicit === "medium" || explicit === "high") {
+          return { level: explicit, reason: "per-category defaultEffort override" };
+        }
+      }
+    }
+  }
+
+  var s = scores || {};
+  var kw = s.keyword || 0;
+  var mf = s.multiFile || 0;
+  var st = s.structure || 0;
+  var wc = s.wordCount || 0;
+  var conf = typeof confidence === "number" ? confidence : 50;
+
+  // HIGH triggers (check in priority order)
+  if (mf >= multiFileThreshold) return { level: "high", reason: "multi-file signal (" + mf + " >= " + multiFileThreshold + ")" };
+  if (catSlug && highCats.indexOf(catSlug) !== -1) return { level: "high", reason: "category '" + catSlug + "' is in highCategories" };
+  if (conf < lowConfThreshold && kw > 0) return { level: "high", reason: "low confidence (" + conf + "%) with keyword signal - more deliberation needed" };
+  if (st >= structuralHighThreshold) return { level: "high", reason: "structurally complex prompt (structure=" + st + ")" };
+
+  // LOW triggers (any of these is enough)
+  if (catSlug && lowCats.indexOf(catSlug) !== -1 && conf >= highConfForLow) {
+    return { level: "low", reason: "trivial category '" + catSlug + "' with high confidence (" + conf + "%)" };
+  }
+  // Relaxed: trivial category + matched keyword is enough even without high confidence
+  // (typo/rename prompts are short so multi-signal confidence is naturally low)
+  if (catSlug && lowCats.indexOf(catSlug) !== -1 && kw > 0) {
+    return { level: "low", reason: "trivial category '" + catSlug + "' with keyword match (confidence=" + conf + "%)" };
+  }
+  if (wc <= 2 && kw > 0 && conf >= 80) {
+    return { level: "low", reason: "very short prompt (" + wc + ") with confident keyword match" };
+  }
+
+  // Default
+  var defaultLevel = (config.effort.defaultLevel) || "medium";
+  return { level: defaultLevel, reason: "default (no HIGH/LOW triggers fired)" };
+}
+
 module.exports = {
   detectLanguage: detectLanguage,
   scoreKeywords: scoreKeywords,
@@ -347,5 +441,9 @@ module.exports = {
   shouldAutoRoute: shouldAutoRoute,
   calculateConfidence: calculateConfidence,
   getCostEstimate: getCostEstimate,
-  preflightCheck: preflightCheck
+  preflightCheck: preflightCheck,
+  determineEffort: determineEffort,
+  // Exported for use by explain mode
+  _DEFAULT_HIGH_CATEGORIES: DEFAULT_HIGH_CATEGORIES,
+  _DEFAULT_LOW_CATEGORIES: DEFAULT_LOW_CATEGORIES
 };

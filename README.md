@@ -4,7 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D16-brightgreen)](package.json)
-[![Plugin Version](https://img.shields.io/badge/plugin-v2.6.0-blue)](.claude-plugin/plugin.json)
+[![Plugin Version](https://img.shields.io/badge/plugin-v2.7.0-blue)](.claude-plugin/plugin.json)
 [![CI](https://github.com/R4CK/claude-model-changer/actions/workflows/preflight.yml/badge.svg)](https://github.com/R4CK/claude-model-changer/actions/workflows/preflight.yml)
 [![Latest Release](https://img.shields.io/github/v/release/R4CK/claude-model-changer)](https://github.com/R4CK/claude-model-changer/releases/latest)
 
@@ -208,6 +208,7 @@ Edit `config/task-routing.json` to add your own categories or move keywords betw
 | `/rate <1-5>` | Rate the last routing decision (feeds the auto-tuner) |
 | `/tune` | Get suggestions to improve your routing config |
 | `/learn` | Review LLM-fallback classification suggestions and keyword candidates |
+| `/effort` | Show current Effort recommendation config + last 20 decisions (v2.7.0+) |
 | `/health` | Plugin self-diagnostics |
 
 ### Manual override (any prompt)

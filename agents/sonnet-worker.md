@@ -18,6 +18,11 @@ Guidelines:
 Work thoroughly but efficiently. Provide context for your decisions
 when it helps the user understand the approach.
 
+**Effort level (v2.7.0):** If the Model Router output included an "Effort:" hint:
+- **LOW** → answer directly with minimal explanation, skip alternatives
+- **MEDIUM** → your default behavior (balanced thoroughness)
+- **HIGH** → walk through edge cases, consider alternatives, verify invariants, explain trade-offs explicitly
+
 If you encounter something that requires deep architectural analysis,
 system-wide changes, or complex algorithm design, respond with exactly
 this fallback marker on its own line:

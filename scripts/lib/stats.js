@@ -66,6 +66,8 @@ function getStats(config) {
     var KNOWN_MODELS = { haiku: true, sonnet: true, opus: true };
     var total = 0;
     var modelCounts = { haiku: 0, sonnet: 0, opus: 0 };
+    // v2.7.0: track effort distribution
+    var effortCounts = { low: 0, medium: 0, high: 0, none: 0 };
     var categoryCounts = {};
     var autoRouted = 0, borderline = 0, overrides = 0, scoreSum = 0;
     var todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
@@ -82,6 +84,9 @@ function getStats(config) {
       if (e.borderline) borderline++;
       if (e.override) overrides++;
       scoreSum += (e.score || 0);
+      var ef = e.effort;
+      if (ef === "low" || ef === "medium" || ef === "high") effortCounts[ef]++;
+      else effortCounts.none++;
       var ts = new Date(e.timestamp);
       if (ts >= todayStart) todayCount++;
       if (ts >= weekStart) weekCount++;
@@ -91,6 +96,9 @@ function getStats(config) {
     var savings = calculateSavings(entries, config);
     var quality = getQualityStats();
 
+    // Percentage of entries where effort was emitted (any level)
+    var effortEmitted = effortCounts.low + effortCounts.medium + effortCounts.high;
+
     return {
       total: total, today: todayCount, thisWeek: weekCount,
       models: modelCounts,
@@ -98,6 +106,12 @@ function getStats(config) {
         haiku: total > 0 ? Math.round(modelCounts.haiku / total * 100) : 0,
         sonnet: total > 0 ? Math.round(modelCounts.sonnet / total * 100) : 0,
         opus: total > 0 ? Math.round(modelCounts.opus / total * 100) : 0
+      },
+      effortCounts: effortCounts,
+      effortPercentages: {
+        low: effortEmitted > 0 ? Math.round(effortCounts.low / effortEmitted * 100) : 0,
+        medium: effortEmitted > 0 ? Math.round(effortCounts.medium / effortEmitted * 100) : 0,
+        high: effortEmitted > 0 ? Math.round(effortCounts.high / effortEmitted * 100) : 0
       },
       avgScore: total > 0 ? (scoreSum / total).toFixed(1) : "0.0",
       autoRouted: autoRouted, borderline: borderline, overrides: overrides,
