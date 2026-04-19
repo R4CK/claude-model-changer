@@ -1,0 +1,43 @@
+{
+  "_description": "Startup / cost-conscious config. Aggressive Haiku defaults, tight budgets, auto-routing enabled at all levels to minimize human interruptions. Copy to .claude/model-routing.json.",
+  "preferenceProfile": "cost-saver",
+  "autoMode": {
+    "enabled": true,
+    "autoThresholds": {
+      "haiku": [1, 4],
+      "opus": [9, 10],
+      "_comment": "Expanded haiku range 1-4 (default: 1-2) - auto-route more to cheapest model"
+    },
+    "borderlineZones": [5, 6, 7, 8]
+  },
+  "scoring": {
+    "weights": {
+      "keyword": 0.40,
+      "wordCount": 0.10,
+      "codeBlocks": 0.10,
+      "multiFile": 0.20,
+      "structure": 0.10,
+      "contextBoost": 0.10,
+      "_comment": "Boosted keyword weight (0.40 vs default 0.35) - trusts configured category mapping over word-count"
+    }
+  },
+  "budgets": {
+    "enabled": true,
+    "limits": {
+      "haiku": { "daily": 200000, "weekly": 1200000 },
+      "sonnet": { "daily": 80000, "weekly": 500000 },
+      "opus": { "daily": 30000, "weekly": 150000 }
+    },
+    "alertThresholds": {
+      "warn": 0.70,
+      "block": 0.95
+    }
+  },
+  "rateLimit": {
+    "maxAutoRoutesPerMinute": 20
+  },
+  "apiLimits": {
+    "enabled": true,
+    "forceHaikuAboveRpm": 80
+  }
+}
