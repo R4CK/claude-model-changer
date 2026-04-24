@@ -11,6 +11,8 @@
 
 var fs = require("fs");
 var path = require("path");
+var karpathy = require("./sync-karpathy-skills.js");
+var centralClaudeMd = require("./update-central-claude-md.js");
 
 var PLUGIN_NAME = "claude-model-changer";
 
@@ -28,6 +30,20 @@ var PLUGIN_VERSION = (function() {
     process.exit(1);
   }
 })();
+
+// Semver-like comparison: returns true if verA > verB (e.g., "3.0.0" > "2.5.0").
+// Simple numeric comparison on dot-separated parts; good enough for version cleanup.
+function isVersionGreater(verA, verB) {
+  var partsA = (verA || "0").split(".").map(function(x) { return parseInt(x, 10) || 0; });
+  var partsB = (verB || "0").split(".").map(function(x) { return parseInt(x, 10) || 0; });
+  for (var i = 0; i < Math.max(partsA.length, partsB.length); i++) {
+    var a = partsA[i] || 0;
+    var b = partsB[i] || 0;
+    if (a > b) return true;
+    if (a < b) return false;
+  }
+  return false;
+}
 
 // Marketplace owner namespace. Used both as the cache subdir name
 // (~/.claude/plugins/cache/<OWNER>/...) and as the registration key suffix
@@ -73,6 +89,18 @@ function getCacheDir() {
   return path.join(getClaudeDir(), "plugins", "cache", PLUGIN_OWNER, PLUGIN_NAME, PLUGIN_VERSION);
 }
 
+// Stable path that hooks always reference — replaced wholesale on each install.
+// Eliminates the need to ever update settings.local.json after version upgrades.
+function getCurrentDir() {
+  return path.join(getClaudeDir(), "plugins", "cache", PLUGIN_OWNER, PLUGIN_NAME, "current");
+}
+
+function rmrf(target) {
+  if (fs.existsSync(target)) {
+    fs.rmSync(target, { recursive: true, force: true });
+  }
+}
+
 function getPluginsJsonPath() {
   return path.join(getClaudeDir(), "plugins", "installed_plugins.json");
 }
@@ -102,6 +130,10 @@ function copyDirRecursive(src, dest) {
   }
 }
 
+function getSettingsLocalJsonPath() {
+  return path.join(getClaudeDir(), "settings.local.json");
+}
+
 function log(msg) {
   console.log("[install] " + msg);
 }
@@ -110,18 +142,93 @@ function logError(msg) {
   console.error("[install] ERROR: " + msg);
 }
 
+// Build a hook command that references pluginRoot directly (no dynamic version lookup).
+// This avoids the alphabetical-sort trap when multiple cached versions coexist.
+function makeHookCmd(pluginRoot, script) {
+  // Use forward slashes; Node on Windows accepts them fine.
+  var normalised = pluginRoot.replace(/\\/g, "/");
+  return "node \"" + normalised + "/scripts/" + script + "\"";
+}
+
+function updateSettingsLocalHooks(pluginRoot) {
+  var slPath = getSettingsLocalJsonPath();
+  var sl = {};
+  try {
+    if (fs.existsSync(slPath)) {
+      sl = JSON.parse(fs.readFileSync(slPath, "utf8"));
+    }
+  } catch (e) {
+    log("Warning: Could not read settings.local.json, creating new");
+  }
+
+  if (!sl.hooks) sl.hooks = {};
+
+  // Replace our plugin's hook entries (all four event types).
+  // We deliberately overwrite so the active version stays current after upgrades.
+  sl.hooks["SessionStart"] = [
+    { hooks: [{ type: "command", command: makeHookCmd(pluginRoot, "runtime-check.js"), timeout: 10 }] }
+  ];
+  sl.hooks["UserPromptSubmit"] = [
+    { hooks: [{ type: "command", command: makeHookCmd(pluginRoot, "analyze-complexity.js"), timeout: 60 }] }
+  ];
+  sl.hooks["Stop"] = [
+    { hooks: [{ type: "command", command: makeHookCmd(pluginRoot, "enforce-stats.js"), timeout: 30 }] }
+  ];
+  sl.hooks["SubagentStop"] = [
+    { hooks: [{ type: "command", command: makeHookCmd(pluginRoot, "detect-fallback.js"), timeout: 15 }] }
+  ];
+
+  fs.writeFileSync(slPath, JSON.stringify(sl, null, 2));
+  log("Updated hooks in settings.local.json -> " + pluginRoot);
+}
+
+// Clean up old cached versions, keeping only the newest and one previous (for rollback).
+// Removes "current" and non-semver directories from consideration.
+function cleanupOldVersions(cacheBaseDir) {
+  if (!fs.existsSync(cacheBaseDir)) return;
+  var entries = fs.readdirSync(cacheBaseDir, { withFileTypes: true });
+  var versions = [];
+
+  for (var i = 0; i < entries.length; i++) {
+    var e = entries[i];
+    if (!e.isDirectory()) continue;
+    if (e.name === "current" || e.name === "external") continue;
+    // Rough semver check: must have dots (e.g., "3.0.0")
+    if (!/^\d+\.\d+\.\d+/.test(e.name)) continue;
+    versions.push(e.name);
+  }
+
+  if (versions.length <= 2) return; // Keep all if only 1-2 versions exist
+
+  // Sort descending (newest first)
+  versions.sort(function(a, b) {
+    return isVersionGreater(a, b) ? -1 : (isVersionGreater(b, a) ? 1 : 0);
+  });
+
+  var toDelete = versions.slice(2); // All except newest + previous
+  for (var i = 0; i < toDelete.length; i++) {
+    var oldDir = path.join(cacheBaseDir, toDelete[i]);
+    rmrf(oldDir);
+    log("Cleaned up old version: " + toDelete[i]);
+  }
+}
+
+
+
 // ---- Main ----
 
 function main() {
   var projectRoot = getProjectRoot();
   var claudeDir = getClaudeDir();
   var cacheDir = getCacheDir();
+  var currentDir = getCurrentDir();
 
   log("Claude Model Changer v" + PLUGIN_VERSION + " - Installer");
   log("Project root: " + projectRoot);
   log("Marketplace owner: " + PLUGIN_OWNER +
       (process.env.CMC_MARKETPLACE_OWNER ? " (from CMC_MARKETPLACE_OWNER env)" : " (auto-detected from username)"));
-  log("Target: " + cacheDir);
+  log("Versioned target : " + cacheDir);
+  log("Stable target    : " + currentDir);
   log("");
 
   // Check Claude Code directory exists
@@ -174,6 +281,41 @@ function main() {
   if (!fs.existsSync(logsDir)) {
     fs.mkdirSync(logsDir, { recursive: true });
     log("Created logs/");
+  }
+
+  // Sync external karpathy skills (always-latest from upstream repo)
+  // and merge into the plugin's central skills/ directory.
+  log("");
+  log("Syncing external skills (andrej-karpathy-skills)...");
+  var karpathyInstalled = [];
+  try {
+    var ok = karpathy.syncRepo();
+    if (ok || fs.existsSync(karpathy.getRepoCacheDir())) {
+      karpathyInstalled = karpathy.installSkillsTo(path.join(cacheDir, "skills"));
+    } else {
+      log("Skipped karpathy skills (no cache, no network)");
+    }
+  } catch (e) {
+    log("Warning: karpathy sync failed - " + e.message);
+  }
+
+  // Update the central ~/.claude/CLAUDE.md with a managed block listing
+  // the karpathy skills that are now available.
+  try {
+    var skillNames = karpathyInstalled.length > 0
+      ? karpathyInstalled
+      : (function() {
+          var d = path.join(karpathy.getRepoCacheDir(), "skills");
+          if (!fs.existsSync(d)) return [];
+          return fs.readdirSync(d, { withFileTypes: true })
+            .filter(function(x) { return x.isDirectory(); })
+            .map(function(x) { return x.name; });
+        })();
+    var block = centralClaudeMd.buildBlock(skillNames);
+    var centralPath = path.join(getClaudeDir(), "CLAUDE.md");
+    centralClaudeMd.upsertBlock(centralPath, block);
+  } catch (e) {
+    log("Warning: failed to update central CLAUDE.md - " + e.message);
   }
 
   log("");
@@ -257,6 +399,20 @@ function main() {
       log("Already enabled in settings.json");
     }
   }
+
+  // Publish to current/ — the stable path hooks permanently reference.
+  // Wipe and re-copy so current/ always exactly matches the just-installed version.
+  log("Publishing to stable current/ path...");
+  rmrf(currentDir);
+  copyDirRecursive(cacheDir, currentDir);
+  log("Published: " + currentDir);
+
+  // Write hooks once, pointing at current/ — never needs touching again on upgrades.
+  updateSettingsLocalHooks(currentDir);
+
+  // Clean up old cached versions (keep newest + 1 previous for rollback).
+  var cacheBase = path.join(claudeDir, "plugins", "cache", PLUGIN_OWNER, PLUGIN_NAME);
+  cleanupOldVersions(cacheBase);
 
   log("");
   log("Installation complete!");
