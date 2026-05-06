@@ -161,15 +161,34 @@ function analyzeComplexity(prompt, config, cwd, sessionId, hookInput) {
   var patterns = stats.loadPatterns();
   var patternMatch = stats.checkPatterns(prompt.toLowerCase(), patterns);
   if (patternMatch) {
+    // v3.2.1: Pattern match no longer fully short-circuits. We compute the
+    // quota state and a basic effort decision so saved patterns can still
+    // be downgraded under quota pressure and emit a thinking-budget hint.
+    var pmModel = patternMatch.model;
+    var pmLevel = { haiku: "SIMPLE", sonnet: "MEDIUM", opus: "COMPLEX" }[pmModel];
+    var pmQuotaState = null, pmQuotaDowngrade = null;
+    try {
+      pmQuotaState = quotaTracker.getQuotaState(config);
+      pmQuotaDowngrade = quotaTracker.shouldDowngrade(pmModel, pmQuotaState, config);
+      if (pmQuotaDowngrade && pmQuotaDowngrade.downgrade) {
+        pmModel = pmQuotaDowngrade.toModel;
+        pmLevel = { haiku: "SIMPLE", sonnet: "MEDIUM", opus: "COMPLEX" }[pmModel] || pmLevel;
+      }
+    } catch (e) {}
+    var pmEffortLevel = pmModel === "haiku" ? "low" : (pmModel === "opus" ? "high" : "medium");
+    var pmThinkingBudget = (config && config.effort && config.effort.thinkingBudgets && typeof config.effort.thinkingBudgets[pmEffortLevel] === "number")
+      ? config.effort.thinkingBudgets[pmEffortLevel]
+      : ({ low: 0, medium: 5000, high: 16000 })[pmEffortLevel];
     return {
       score: { haiku: 2, sonnet: 5, opus: 9 }[patternMatch.model],
-      level: { haiku: "SIMPLE", sonnet: "MEDIUM", opus: "COMPLEX" }[patternMatch.model],
-      model: patternMatch.model, override: false,
+      level: pmLevel, model: pmModel, override: false,
       matchedCategory: patternMatch.label, reason: "Matched saved pattern: \"" + patternMatch.pattern + "\"",
       borderline: { isBorderline: false }, autoRoute: true,
       projectTypes: null, contextBoost: 0, stickiness: { sticky: false },
       confidence: { confidence: 95, signals: 1, agreement: "high" },
-      patternMatch: patternMatch, detectedLanguage: "en", scores: null
+      patternMatch: patternMatch, detectedLanguage: "en", scores: null,
+      quotaState: pmQuotaState, quotaDowngrade: pmQuotaDowngrade,
+      effort: { level: pmEffortLevel, reason: "from saved pattern '" + patternMatch.pattern + "'", thinkingBudget: pmThinkingBudget }
     };
   }
 
@@ -221,10 +240,17 @@ function analyzeComplexity(prompt, config, cwd, sessionId, hookInput) {
 
   // v3.1.0: Parallel subagent dispatch detection (orchestrator pattern).
   var parallelDispatch = scoring.detectParallelDispatch(promptLower);
-  if (parallelDispatch.active) contextBoost += 2;  // orchestration is opus-territory
 
   // v3.2.0: Agent Teams role detection (Claude Code 2.1+).
   var agentTeamsRole = scoring.detectAgentTeamsRole(promptLower);
+
+  // v3.2.1: Avoid double-counting. Both `parallelDispatch` and `agentTeamsRole`
+  // detect orchestration patterns. If Agent Teams already fires (it's the
+  // strictly stronger signal — it directly assigns the model later), skip
+  // the parallelDispatch contextBoost to keep the score clean.
+  if (parallelDispatch.active && !(agentTeamsRole && agentTeamsRole.role === "lead")) {
+    contextBoost += 2;
+  }
 
   // v3.2.0: Claude Code version awareness — used to inform downstream output
   // (e.g., emit thinking budget hints in CC2.1 inline format).
@@ -290,21 +316,10 @@ function analyzeComplexity(prompt, config, cwd, sessionId, hookInput) {
     else { level = "COMPLEX"; model = "opus"; }
   }
 
-  // v3.1.0: Skill trigger override — if a known skill trigger fired and config
-  // says it's authoritative, switch the model.
-  if (skillTrigger && skillTrigger.suggestedModel) {
-    var allowSkillOverride = !(config && config.skillIntegration && config.skillIntegration.overrideRouting === false);
-    if (allowSkillOverride) {
-      model = skillTrigger.suggestedModel;
-      level = ({ haiku: "SIMPLE", sonnet: "MEDIUM", opus: "COMPLEX" })[model] || level;
-    }
-  }
-
-  // v3.2.0: Agent Teams role override — orchestrator → opus, teammate → sonnet
-  if (agentTeamsRole && agentTeamsRole.suggestedModel) {
-    model = agentTeamsRole.suggestedModel;
-    level = ({ haiku: "SIMPLE", sonnet: "MEDIUM", opus: "COMPLEX" })[model] || level;
-  }
+  // v3.2.1: Skill trigger and Agent Teams override moved AFTER keywordInfluence
+  // (see below). Pre-v3.2.1 they were applied here, but keywordInfluence ===
+  // "override" reverted them, making both features no-ops in many cases.
+  // We track them for reporting up-front but apply the override later.
 
   // v3.2.0: Quota state is computed eagerly so /stats and statusline can read
   // it, but the actual downgrade is applied LATER (after all other model-
@@ -343,6 +358,25 @@ function analyzeComplexity(prompt, config, cwd, sessionId, hookInput) {
         else { level = "COMPLEX"; model = "opus"; }
       }
     }
+  }
+
+  // v3.2.1: Skill trigger override applied AFTER keywordInfluence so the
+  // skill trigger always wins. Without this, the keywordInfluence "override"
+  // mode reverted the skill decision, making the skill rules ineffective.
+  if (skillTrigger && skillTrigger.suggestedModel) {
+    var allowSkillOverride = !(config && config.skillIntegration && config.skillIntegration.overrideRouting === false);
+    if (allowSkillOverride) {
+      model = skillTrigger.suggestedModel;
+      level = ({ haiku: "SIMPLE", sonnet: "MEDIUM", opus: "COMPLEX" })[model] || level;
+    }
+  }
+
+  // v3.2.1: Agent Teams role override applied AFTER skill trigger and
+  // keywordInfluence — orchestrator → opus, teammate → sonnet. This is the
+  // last "explicit user-intent" override before stickiness/quota.
+  if (agentTeamsRole && agentTeamsRole.suggestedModel) {
+    model = agentTeamsRole.suggestedModel;
+    level = ({ haiku: "SIMPLE", sonnet: "MEDIUM", opus: "COMPLEX" })[model] || level;
   }
 
   var stickiness = session.getSessionStickiness(prompt, sessionId, model, config);
