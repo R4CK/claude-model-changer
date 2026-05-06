@@ -1,10 +1,10 @@
 # Claude Model Changer
 
-> **Stop paying Opus prices for typo fixes.** Automatic Claude Code plugin that routes each task to the right model — Haiku for trivia, Sonnet for the middle ground, Opus only when you actually need it.
+> **Stop paying Opus prices for typo fixes.** Automatic Claude Code plugin that routes each task to the right model — Haiku for trivia, Sonnet for the middle ground, Opus only when you actually need it. Now with quota awareness, statusline, context bloat detection, agent teams support, git hooks, and more.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D16-brightgreen)](package.json)
-[![Plugin Version](https://img.shields.io/badge/plugin-v3.0.0-blue)](.claude-plugin/plugin.json)
+[![Plugin Version](https://img.shields.io/badge/plugin-v3.2.2-blue)](.claude-plugin/plugin.json)
 [![CI](https://github.com/R4CK/claude-model-changer/actions/workflows/preflight.yml/badge.svg)](https://github.com/R4CK/claude-model-changer/actions/workflows/preflight.yml)
 [![Latest Release](https://img.shields.io/github/v/release/R4CK/claude-model-changer)](https://github.com/R4CK/claude-model-changer/releases/latest)
 
@@ -14,10 +14,13 @@
 
 On every prompt, this plugin:
 
-1. **Scores the task** on a 1–10 complexity scale using a weighted heuristic (keywords, file paths, code blocks, multi-file indicators, structural cues, language).
-2. **Maps the score to a model**: Haiku (1–3), Sonnet (4–7), Opus (8–10).
-3. **Routes the work** to the matching subagent — automatically for high-confidence cases, with a confirmation prompt for borderline scores.
-4. **Tracks everything** in a local usage log so you can see real cost savings via `/stats`, `/dashboard`, and `/tune`.
+1. **Scores the task** on a 1–10 complexity scale using a weighted heuristic (keywords, file paths, code blocks, multi-file indicators, structural cues, language, MCP-tool density).
+2. **Maps the score to a model**: Haiku 4.5 (1–3), Sonnet 4.6 (4–7), Opus 4.7 (8–10) — with optional 1M context for Opus.
+3. **Recommends a thinking budget** (low / medium / high) so downstream tooling can set `thinking.budget_tokens` appropriately.
+4. **Routes the work** to the matching subagent — automatically for high-confidence cases, with a confirmation prompt for borderline scores.
+5. **Watches your quota** — auto-downgrades Opus → Sonnet when your weekly Opus usage approaches the limit.
+6. **Tracks context bloat** — flags repeated reads of the same file so you don't waste tokens.
+7. **Tracks everything** in local logs — see real cost savings via `/stats`, `/dashboard`, `/quota`, `/context-audit`, and `/tune`.
 
 It runs entirely on your machine. No telemetry, no external API calls, no data leaves your laptop.
 
@@ -31,6 +34,25 @@ Real numbers from the included example log:
 
 ---
 
+## What's new in v3.2.x
+
+The plugin has matured significantly since v3.0.0. Quick tour of recent additions:
+
+| Version | Theme | Key features |
+|---|---|---|
+| **v3.2.2** | Update flow | `UPDATING.md` guide, `update-from-github.js` helper for path-source users |
+| **v3.2.1** | Harmony fixes | Skill trigger and Agent Teams overrides now actually win when they should; consolidated PreToolUse hook |
+| **v3.2.0** | 8 community features | Quota-aware routing, custom statusline, context bloat detector, git commit hooks, Agent Teams role detection, auto-benchmark, CC 2.1+ awareness, `/quota` /`/context-audit` /`/git-router-stats` /`/auto-benchmark` /`/statusline` commands |
+| **v3.1.1** | Karpathy auto-sync | SessionStart hook silently keeps `karpathy-guidelines` skill fresh from upstream |
+| **v3.1.0** | Claude 4.x | Updated Haiku 4.5 / Sonnet 4.6 / Opus 4.7 pricing + IDs, 1M context for `opus-1m`, effort → thinking budget mapping, MCP-tool density scoring, skill trigger detection (10 default rules), plan-mode awareness, fast-mode awareness, parallel dispatch detection, Hungarian morphology + IT-jargon expansion, auto-memory integration, Prometheus telemetry exporter |
+| v3.0.0 | Architecture | Atomic I/O, config hot-reload, optimistic concurrency for session state |
+| v2.7.0 | Effort | Low / Medium / High reasoning budget recommendation, orthogonal to model |
+| v2.x | Foundation | 30 task categories, multi-language (EN/HU/DE), LLM-fallback classifier, anomaly detection, adaptive weights, sticky sessions, project-aware boost |
+
+See [CHANGELOG.md](CHANGELOG.md) for the full release notes.
+
+---
+
 ## Quick install
 
 ### Option A — From the marketplace (recommended)
@@ -40,7 +62,18 @@ claude plugin marketplace add https://github.com/R4CK/claude-model-changer
 claude plugin install claude-model-changer@r4ck
 ```
 
-Restart Claude Code. Done. Updates are a one-liner:
+Restart Claude Code. Done. With `autoUpdate: true` set on the marketplace, new releases land automatically on the next session start.
+
+```json
+"extraKnownMarketplaces": {
+  "r4ck": {
+    "source": { "source": "github", "repo": "R4CK/claude-model-changer" },
+    "autoUpdate": true
+  }
+}
+```
+
+Manual update:
 
 ```bash
 claude plugin update claude-model-changer
@@ -54,7 +87,7 @@ Download [`dist/install.js`](dist/install.js) and run:
 node install.js
 ```
 
-That's it. The bundle is 402 KB, embeds all 52 plugin files, and registers the plugin in your central `~/.claude` directory. Works without internet, without `git`, without the Claude CLI being on `PATH` (it falls back to manual registration).
+The bundle is ~600 KB, embeds all plugin files, and registers the plugin in your central `~/.claude` directory. Works without internet, without `git`, without the Claude CLI being on `PATH` (it falls back to manual registration).
 
 To uninstall:
 
@@ -63,8 +96,6 @@ node install.js --uninstall
 ```
 
 ### Option C — From source (for development)
-
-Clone the repo and run the launcher for your platform:
 
 ```bash
 git clone https://github.com/R4CK/claude-model-changer
@@ -79,11 +110,15 @@ The source-tree installers run a **10-point preflight** before installing (Node 
 
 If Node.js is missing, the installer attempts auto-install via the right tool for your OS (winget / choco on Windows; apt / dnf / pacman / brew elsewhere).
 
+### Updating
+
+See [UPDATING.md](UPDATING.md) for the full update flow per install method.
+
 ---
 
 ## Requirements
 
-- **Claude Code** (any recent version with plugin support)
+- **Claude Code** 2.x (any recent version with plugin support; CC 2.1+ unlocks extra features)
 - **Node.js ≥ 16** (LTS recommended)
 - ~2 MB free disk in `~/.claude/plugins/cache/`
 
@@ -91,8 +126,8 @@ If Node.js is missing, the installer attempts auto-install via the right tool fo
 
 | Component | Minimum | Tested | Notes |
 |---|---|---|---|
-| Claude Code | 2.x | 2.1.76+ | Plugin API + marketplace support required |
-| Node.js | 16 LTS | 16 / 18 / 20 / 22 | Auto-install via source installer |
+| Claude Code | 2.x | 2.1.117+ | CC 2.1+ feature flags auto-detected (native binary, persistent model selection, inline thinking, fast MCP startup) |
+| Node.js | 16 LTS | 16 / 18 / 20 / 22 / 25 | Auto-install via source installer |
 | Windows | 10+ | 11 | PowerShell + cmd installers work; WSL also supported |
 | macOS | 12+ | 13–15 | Source installer preferred |
 | Linux | any distro with Node ≥16 | Ubuntu 22.04 | CI runs here |
@@ -104,22 +139,24 @@ If Node.js is missing, the installer attempts auto-install via the right tool fo
 After installing (see above) and restarting Claude Code:
 
 1. Type any prompt — `fix the typo on line 5`
-2. Plugin routes to **haiku** automatically. You'll see:
+2. Plugin routes to **haiku** automatically:
    ```
    [Model Router] Complexity: SIMPLE (score 1/10) -> Recommended: haiku
+   Effort: low (trivial category 'typo_fix') | thinking budget: 0 tokens
    ```
 3. Try a harder one — `design a multi-tenant cache invalidation strategy`
 4. Plugin routes to **opus** (automatic at high confidence):
    ```
    [Model Router] Complexity: COMPLEX (score 9/10) -> Recommended: opus
+   Effort: high (category 'system_design' is in highCategories) | thinking budget: 16000 tokens
    ```
-5. Run `/stats` to see the saved cost so far.
+5. Run `/stats` to see the saved cost so far. Run `/quota` to see your weekly budget. Run `/dashboard` for a visual.
 
 That's it. The plugin is now invisible infrastructure; focus on your actual work.
 
 ---
 
-## Cost Model
+## Cost Model (Claude 4.x pricing)
 
 **No new billing.** Model routing is free; you already pay for your own Claude Code usage. The plugin just picks the cheapest model capable of the task.
 
@@ -127,48 +164,82 @@ Typical savings on mixed workloads:
 
 | Workload | Without plugin (all Opus) | With plugin | Savings |
 |---|---|---|---|
-| 100 typo fixes + 20 bug fixes + 10 architecture tasks | ~$90 | ~$35 | **~60%** |
-| Heavy refactor session (mostly Sonnet-level) | ~$45 | ~$25 | **~45%** |
+| 100 typo fixes + 20 bug fixes + 10 architecture tasks | ~$90 | ~$28 | **~69%** |
+| Heavy refactor session (mostly Sonnet-level) | ~$45 | ~$22 | **~51%** |
 | Pure architecture sprint (mostly Opus) | ~$90 | ~$85 | ~5% |
 
 Run `/stats` in a Claude Code session to see your actual savings vs an all-Opus baseline.
 
-| Model | Input $/1M | Output $/1M | Relative |
-|---|---|---|---|
-| Haiku | $0.25 | $1.25 | 1× |
-| Sonnet | $3.00 | $15.00 | 12× |
-| Opus | $15.00 | $75.00 | 60× |
+| Model | Input $/1M | Output $/1M | Relative | Context |
+|---|---|---|---|---|
+| Haiku 4.5 | $1.00 | $5.00 | 1× | 200K |
+| Sonnet 4.6 | $3.00 | $15.00 | 3× | 200K |
+| Opus 4.7 | $15.00 | $75.00 | 15× | 200K |
+| Opus 4.7 [1m] | $15.00 | $75.00 | 15× | **1M** |
 
 ---
 
-## How routing works
+## How routing works (v3.2.x pipeline)
 
 ```
 Your prompt
     │
     ▼
-┌─────────────────────────────────────────────────┐
-│  UserPromptSubmit hook                          │
-│    └─ scripts/analyze-complexity.js             │
-│         ├─ Score: 1–10                          │
-│         ├─ Match category (28 total)            │
-│         ├─ Detect language (EN/HU/DE)           │
-│         ├─ Confidence + borderline check        │
-│         └─ Cost estimate                        │
-└─────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│ Manual override? (@haiku, @sonnet, @opus)            │  early return
+└──────────────────────────────────────────────────────┘
     │
     ▼
-┌─────────────────────────────────────────────────┐
-│  Decision                                        │
-│    ├─ Score 1–2 + high confidence               │
-│    │     → AUTO-ROUTE to haiku-worker           │
-│    ├─ Score 3–4 or 7–8 (borderline)             │
-│    │     → ASK user (haiku/sonnet or sonnet/opus)│
-│    ├─ Score 5–7                                 │
-│    │     → SUGGEST sonnet, ask to confirm       │
-│    └─ Score 9–10 + high confidence              │
-│          → AUTO-ROUTE to opus-worker            │
-└─────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│ Saved pattern match? (config/patterns.json)          │  early return + quota check
+└──────────────────────────────────────────────────────┘
+    │
+    ▼
+┌──────────────────────────────────────────────────────┐
+│ analyze-complexity.js                                │
+│  ├─ Score (1–10) from 5 sub-scores                   │
+│  ├─ Match category (30 total)                        │
+│  ├─ Detect language (EN/HU/DE) + Hungarian morphology│
+│  ├─ Confidence + borderline check                    │
+│  ├─ contextBoost layers:                             │
+│  │   • project type (+0..3)                          │
+│  │   • prompt history (+0..3)                        │
+│  │   • plan mode (+1 if active)                      │
+│  │   • MCP tool density (+0..3)                      │
+│  │   • parallel dispatch (+2)                        │
+│  └─ keywordInfluence override (configurable)         │
+└──────────────────────────────────────────────────────┘
+    │
+    ▼
+┌──────────────────────────────────────────────────────┐
+│ Skill trigger override? (10 default rules, v3.2.1)   │
+│  e.g., superpowers:debugging → sonnet+high           │
+└──────────────────────────────────────────────────────┘
+    │
+    ▼
+┌──────────────────────────────────────────────────────┐
+│ Agent Teams role override? (CC 2.1+)                 │
+│  "as team lead" → opus+high                          │
+│  "as teammate"  → sonnet+medium                      │
+└──────────────────────────────────────────────────────┘
+    │
+    ▼
+┌──────────────────────────────────────────────────────┐
+│ Sticky session? (only if not auto-routing)           │
+└──────────────────────────────────────────────────────┘
+    │
+    ▼
+┌──────────────────────────────────────────────────────┐
+│ Quota-aware downgrade (final word)                   │
+│  Opus weekly ≥80%? → opus → sonnet automatically     │
+└──────────────────────────────────────────────────────┘
+    │
+    ▼
+┌──────────────────────────────────────────────────────┐
+│ Effort decision (parallel pipeline)                  │
+│  determineEffort → memory hint nudge → fast mode     │
+│   → low / medium / high + thinking budget hint       │
+└──────────────────────────────────────────────────────┘
 ```
 
 ### Scoring weights (configurable in `config/task-routing.json`)
@@ -179,17 +250,20 @@ Your prompt
 | Multi-file indicators | 20% | "across all files", "project-wide" |
 | Structural complexity | 20% | Numbered lists, file paths, bullets |
 | Word count | 15% | Longer prompts trend higher |
-| Code blocks | 10% | Number of \`\`\` fences |
+| Code blocks | 10% | Number of ` ``` ` fences |
+| contextBoost | additive | Project type + history + plan mode + MCP + parallel |
 
 Questions get a 20% reduction (asking *about* code is usually easier than writing it).
 
-### The 28 task categories
+### The 30 task categories
 
 Predefined buckets, each with example keywords:
 
 - **Haiku (9):** typo, formatting, comments, imports, quick questions, search/list, single-line edits, status checks, renames
-- **Sonnet (10):** bug fixing, configuration, testing, code review, small refactoring, component creation, integration, error handling, documentation, feature addition
-- **Opus (9):** architecture, large refactoring, multi-file work, algorithms, security, performance, planning, system design, tech debt
+- **Sonnet (12):** bug fixing, configuration, testing, code review, small refactoring, component creation, integration, error handling, documentation, feature addition, performance debugging, code investigation
+- **Opus (9):** architecture, large refactoring, multi-file work, algorithms, security, performance audit, planning, system design, tech debt
+
+Multi-language (EN/HU/DE) with **Hungarian morphology** support for proper handling of inflected forms (`elgépelést`, `reaktorozd`, etc.).
 
 Edit `config/task-routing.json` to add your own categories or move keywords between models.
 
@@ -197,19 +271,47 @@ Edit `config/task-routing.json` to add your own categories or move keywords betw
 
 ## Commands
 
+### Core
+
 | Command | Description |
 |---------|-------------|
 | `/stats` | Usage breakdown (per model, per category, today/week, cost estimate) |
 | `/dashboard` | Generate an interactive HTML dashboard |
+| `/summary` | Current-session quick summary |
 | `/configure` | Settings wizard — adjust thresholds, weights, auto-mode behavior |
+| `/health` | Plugin self-diagnostics |
+| `/effort` | Show current Effort recommendation config + last 20 decisions |
+
+### Diagnostic & analysis
+
+| Command | Description |
+|---------|-------------|
 | `/complexity <text>` | Score a prompt without routing |
 | `/benchmark <text>` | Compare how all three models would handle the same task |
+| `/auto-benchmark` | Run the canonical 10-prompt benchmark + drift detection (v3.2.0) |
+| `/quota` | Weekly + 5-hour rolling quota state with downgrade pressure indicators (v3.2.0) |
+| `/context-audit` | Heatmap: what's eating your context window (v3.2.0) |
+| `/git-router-stats` | Git commit/push hook statistics (v3.2.0) |
+| `/metrics` | Prometheus text-format metrics export (v3.1.0) |
+
+### Routing & overrides
+
+| Command | Description |
+|---------|-------------|
 | `/route <model> <task>` | Manual override |
+| `/save-pattern <pattern> <model> [label]` | Save a routing rule |
+| `/patterns` | List or manage saved patterns |
 | `/rate <1-5>` | Rate the last routing decision (feeds the auto-tuner) |
 | `/tune` | Get suggestions to improve your routing config |
 | `/learn` | Review LLM-fallback classification suggestions and keyword candidates |
-| `/effort` | Show current Effort recommendation config + last 20 decisions (v2.7.0+) |
-| `/health` | Plugin self-diagnostics |
+| `/statusline` | Manage the custom statusline integration (v3.2.0) |
+
+### Configuration
+
+| Command | Description |
+|---------|-------------|
+| `/export-config [path]` | Export current config as a shareable bundle |
+| `/import-config <path>` | Import a config bundle |
 
 ### Manual override (any prompt)
 
@@ -221,13 +323,29 @@ Edit `config/task-routing.json` to add your own categories or move keywords betw
 
 ---
 
+## Hooks
+
+The plugin registers five hooks in `hooks/hooks.json`:
+
+| Hook | Script | Timeout | Purpose |
+|------|--------|---------|---------|
+| `SessionStart` | `runtime-check.js` | 10s | Cached integrity check + Karpathy skills auto-sync (v3.1.1) |
+| `UserPromptSubmit` | `analyze-complexity.js` | 60s | Score & route every prompt |
+| `PreToolUse` (Read\|Bash) | `pre-tool-router.js` | 8s | Context bloat detection + git commit/push routing (v3.2.1) |
+| `Stop` | `enforce-stats.js` | 15s | Append the mandatory stats footer |
+| `SubagentStop` | `detect-fallback.js` | 30s | Detect if a routed subagent fell back to a different model |
+
+The `SessionStart` hook is silent on success and never blocks session start. Karpathy auto-sync runs detached in the background (24h throttle).
+
+---
+
 ## Configuration
 
 ### Per-user (global)
 
 Edit `~/.claude/plugins/cache/<owner>/claude-model-changer/<version>/config/task-routing.json`.
 
-The file is deep-merged at runtime, so changes take effect on the next prompt. Restart not required.
+The file is hot-reloaded at runtime via mtime+size signature, so changes take effect on the next prompt. Restart not required.
 
 ### Per-project (overrides global)
 
@@ -253,6 +371,36 @@ Drop a `.claude/model-routing.json` file in your project root. Example:
 
 This forces opus for critical-path keywords *only in this project*, and disables auto-routing here even if it's globally on. The base config stays untouched.
 
+### v3.x feature config blocks
+
+All new behavior is config-gated. Set any to `enabled: false` to revert to legacy behavior:
+
+```json
+{
+  "modelIds": { "haiku": "claude-haiku-4-5", "sonnet": "claude-sonnet-4-6", "opus": "claude-opus-4-7", "opus-1m": "claude-opus-4-7[1m]" },
+  "contextWindows": { "haiku": 200000, "sonnet": 200000, "opus": 200000, "opus-1m": 1000000 },
+
+  "fastMode": { "enabled": true, "detectFromUserSettings": true },
+  "memoryIntegration": { "enabled": true, "influenceEffort": true },
+  "karpathySync": { "enabled": true, "intervalHours": 24, "background": true },
+  "quotaAware": { "enabled": true, "opusDowngradeThreshold": 0.8, "opusFallbackModel": "sonnet", "respectBurstLimit": true },
+  "statusline": { "format": "compact", "includeCost": true, "includeIcon": true },
+  "contextBloat": { "enabled": true, "duplicateThreshold": 2, "windowMinutes": 30 },
+  "gitHooks": { "enabled": true, "autoMessageModel": "auto", "warnForcePush": true, "trackStats": true, "diffThresholds": { "sonnet": 50, "opus": 500 } },
+  "claudeCodeFeatures": { "detectVersion": true, "useInlineThinkingProgress": true, "trustFastMcpStartup": true },
+
+  "mcpToolAwareness": { "enabled": true, "tools": ["playwright","github","slack", "..."] },
+  "skillIntegration": { "enabled": true, "overrideRouting": true, "rules": [...] },
+
+  "planMode": { "enabled": true, "scoreBoost": 1, "detectFromKeywords": true, "keywords": [...] },
+
+  "effort": {
+    "enabled": true,
+    "thinkingBudgets": { "low": 0, "medium": 5000, "high": 16000 }
+  }
+}
+```
+
 ### Auto-mode tuning
 
 ```json
@@ -263,39 +411,36 @@ This forces opus for critical-path keywords *only in this project*, and disables
     "opus":  [9, 10]
   },
   "borderlineZones": [3, 4, 7, 8],
-  "llmFallback": {
-    "enabled": false
-  }
+  "llmFallback": { "enabled": false }
 }
 ```
 
 - `autoThresholds`: score ranges that auto-delegate without asking
-- `borderlineZones`: scores that trigger a confirmation prompt with both options
+- `borderlineZones`: scores that trigger a confirmation prompt
 - `enabled: false` → always ask, never auto-route
 
 ### LLM-fallback classifier (opt-in, v2.4.0+)
 
-When the deterministic scorer can't classify a prompt confidently
-(`confidence < 40` or no keyword match), the hook outputs a structured
-**instruction to Claude** to use the existing **`haiku-worker` subagent**
-(shipped with this plugin) to classify the prompt before routing.
+When the deterministic scorer can't classify a prompt confidently (`confidence < 40` or no keyword match), the hook outputs an instruction for Claude to use the existing **`haiku-worker` subagent** to classify the prompt before routing. **The hook itself makes no API call.** Cost: zero extra. Enable via `autoMode.llmFallback.enabled = true`.
 
-**The hook itself makes no API call.** It just emits a text instruction.
-Claude reads it, uses its built-in `Task` tool with `subagent_type="haiku-worker"`
-to classify, then routes the user's actual task to the chosen model. The
-classification result is also logged via the `--log-llm-suggestion`
-special command, so you can later review keyword candidates via `/learn`.
+### Skill trigger rules (v3.1.0)
 
-**To enable:**
-1. In `config/task-routing.json`, set `autoMode.llmFallback.enabled = true`
-2. Restart Claude Code
+Default `skillIntegration.rules` map common skill invocations to optimal model + effort:
 
-**Cost:** zero extra — the Haiku usage counts against your normal Claude
-Code subagent usage, not against a separate API key. No billing surprises.
+| Trigger | → Model | Effort |
+|---|---|---|
+| `superpowers:debugging` | sonnet | high |
+| `superpowers:systematic-debugging` | sonnet | high |
+| `superpowers:test-driven-development` | sonnet | medium |
+| `superpowers:writing-plans` | opus | high |
+| `superpowers:brainstorming` | opus | high |
+| `frontend-design` | sonnet | medium |
+| `feature-dev:code-architect` | opus | high |
+| `code-review:code-review` | sonnet | medium |
+| `anthropic-skills:web-artifacts-builder` | sonnet | medium |
+| `anthropic-skills:skill-creator` | opus | high |
 
-**Failure modes:** zero. The hook only suggests; Claude only acts if it
-receives the suggestion. There's no network call, no timeout, no auth flow
-to break.
+Add your own in config.
 
 ---
 
@@ -305,6 +450,7 @@ to break.
 ~/.claude/
 ├── plugins/
 │   ├── cache/<owner>/claude-model-changer/<version>/   ← plugin files live here
+│   ├── cache/<owner>/external/andrej-karpathy-skills/  ← auto-synced karpathy upstream
 │   ├── installed_plugins.json                           ← registration entry
 │   └── marketplaces/<owner>/                            ← only via marketplace install
 └── settings.json                                        ← enabledPlugins entry
@@ -313,21 +459,6 @@ to break.
 `<owner>` is the marketplace name. Via the marketplace install (Option A) it's `r4ck`. Via the bundled installer (Option B) or source installer (Option C) it auto-detects from your username (`<lowercase-username>-local`), or you can override with `CMC_MARKETPLACE_OWNER=foo`.
 
 The plugin is **user-scope**: available in every Claude Code session you start, in any project. Not project-scoped.
-
----
-
-## Hooks
-
-The plugin registers four hooks in `hooks/hooks.json`:
-
-| Hook | Script | Timeout | Purpose |
-|------|--------|---------|---------|
-| `UserPromptSubmit` | `analyze-complexity.js` | 60s | Score & route every prompt |
-| `Stop` | `enforce-stats.js` | 30s | Append the mandatory stats footer |
-| `SubagentComplete` | `detect-fallback.js` | 15s | Detect if a routed subagent fell back to a different model |
-| `SessionStart` | `runtime-check.js` | 10s | Cached integrity check; warns if plugin files are missing or corrupted |
-
-Runtime-check is silent on success and never blocks session start.
 
 ---
 
@@ -342,34 +473,53 @@ claude-model-changer/
 │   ├── haiku-worker.md          # Subagent for SIMPLE tasks
 │   ├── sonnet-worker.md         # Subagent for MEDIUM tasks
 │   └── opus-worker.md           # Subagent for COMPLEX tasks
-├── commands/                    # Slash commands (/stats, /tune, /configure, ...)
+├── commands/                    # 17 slash commands
 ├── config/
-│   ├── task-routing.json        # 28 categories, weights, thresholds
+│   ├── task-routing.json        # 30 categories, weights, thresholds, all v3.x feature blocks
 │   └── patterns.json            # User-saved prompt → model mappings
 ├── hooks/
-│   └── hooks.json               # 4 hook definitions
+│   └── hooks.json               # 5 hook definitions (SessionStart, UserPromptSubmit, PreToolUse, Stop, SubagentStop)
 ├── scripts/
-│   ├── analyze-complexity.js    # ~30 KB - the scoring engine
+│   ├── analyze-complexity.js    # ~70 KB - the scoring engine
 │   ├── enforce-stats.js         # Stats footer for every response
 │   ├── detect-fallback.js       # Subagent fallback detection
-│   ├── runtime-check.js         # SessionStart integrity check
+│   ├── runtime-check.js         # SessionStart integrity check + karpathy spawn
+│   ├── pre-tool-router.js       # PreToolUse hook (combined v3.2.1)
+│   ├── context-bloat-detect.js  # Tool call dedup detector (v3.2.0)
+│   ├── git-commit-hook.js       # Git commit/push routing (v3.2.0)
+│   ├── statusline.js            # Custom Claude Code statusline (v3.2.0)
+│   ├── auto-benchmark.js        # Routing benchmark suite (v3.2.0)
+│   ├── export-prometheus.js     # Telemetry exporter (v3.1.0)
+│   ├── karpathy-session-sync.js # Throttled karpathy sync (v3.1.1)
+│   ├── sync-karpathy-skills.js  # Karpathy upstream pull
+│   ├── update-from-github.js    # Plugin self-update for path-source users (v3.2.2)
+│   ├── update-central-claude-md.js  # Manage karpathy block in ~/.claude/CLAUDE.md
 │   ├── preflight.js             # 10-point install validation
-│   ├── install-plugin.js        # Manual installer (called by source installers)
+│   ├── install-plugin.js        # Manual installer
 │   ├── uninstall-plugin.js      # Cleanup
 │   ├── build-installer.js       # Generates dist/install.js bundle
 │   ├── generate-dashboard.js    # /dashboard backing script
 │   ├── live-dashboard.js        # Live HTML dashboard
-│   └── lib/                     # Shared modules: scoring, config, session, stats, io, health, ...
+│   └── lib/                     # Shared modules:
+│       ├── scoring.js           # Sub-scores, MCP/skill/agent-teams detectors
+│       ├── quota-tracker.js     # Weekly + 5h rolling tracking (v3.2.0)
+│       ├── cc-version.js        # Claude Code 2.1+ feature detection (v3.2.0)
+│       ├── context-audit.js     # Bloat audit helper (v3.2.0)
+│       ├── memory.js            # Auto-memory MEMORY.md reader (v3.1.0)
+│       ├── atomic-io.js         # Concurrency-safe state I/O (v3.0.0)
+│       ├── config.js, session.js, stats.js, io.js, health.js, etc.
 ├── skills/
 │   └── model-router/            # Skill bundle exposed via SKILL.md
+│   └── karpathy-guidelines/     # Auto-installed from upstream (v3.1.1+)
 ├── dist/
-│   ├── install.js               # Self-contained 402 KB installer (Option B)
+│   ├── install.js               # Self-contained ~600 KB installer (Option B)
 │   └── README.md                # Bundle install docs
 ├── docs/                        # Architecture & user-manual docs
-├── install.sh                   # Source installer (POSIX)
-├── install.ps1                  # Source installer (PowerShell)
-├── install.bat                  # Source installer (cmd wrapper)
+├── tests/                       # 79 unit tests (atomic-io, config-hot-reload, scoring, effort)
+├── install.sh / install.ps1 / install.bat  # Source installers
 ├── INSTALL.md                   # Detailed install guide with preflight info
+├── UPDATING.md                  # Update flow guide (v3.2.2)
+├── CHANGELOG.md                 # Full version history
 ├── package.json
 └── README.md                    # ← you are here
 ```
@@ -387,29 +537,41 @@ Yes. Drop a `.claude/model-routing.json` in your project root. See the `docs/exa
 **Q: Does my team share the config?**
 The repo-level config (`config/task-routing.json`) is shared via git. Per-user auto-learned keywords live in `logs/learned-keywords.json` (gitignored). Per-project overrides go in `.claude/model-routing.json` (typically committed). Export/import via `/export-config` and `/import-config`.
 
+**Q: What happens when I hit my Opus weekly quota?**
+The plugin auto-downgrades opus → sonnet (configurable threshold, default 80%). You'll see `⚠ Quota downgrade: opus → sonnet (Opus weekly quota exhausted)` in the routing output. Run `/quota` for current state. Disable via `quotaAware.enabled: false`.
+
+**Q: How do I see what's bloating my context window?**
+Run `/context-audit`. It lists the top 10 files and bash commands by estimated token cost over the last hour, with recommendations to `/clear` or pin frequent files into a skill.
+
+**Q: Does the plugin add a statusline?**
+Optionally. Run `/statusline install` for the snippet to add to `~/.claude/settings.json`. Output format: `🟢 sonnet │ ctx 23% │ wk 12% │ $0.42`.
+
 **Q: What if I'm on a slow machine and the hook times out?**
 Default `UserPromptSubmit` timeout is 60s (plenty). If you see `[Model Router - ERROR]` in the session, run `node scripts/preflight.js` to diagnose. The error log lives at `logs/hook-errors.jsonl`.
 
 **Q: Does it call any external services?**
-No. All scoring is local. The opt-in LLM fallback uses your existing `haiku-worker` subagent — no API keys, no extra billing.
+No. All scoring is local. The opt-in LLM fallback uses your existing `haiku-worker` subagent — no API keys, no extra billing. The Karpathy auto-sync clones from a public GitHub repo (read-only, no auth).
 
 **Q: What gets logged? Can I audit it?**
-`logs/usage.jsonl` keeps the last 5000 routing decisions (score, model, category, confidence). `logs/learn-suggestions.jsonl` stores LLM fallback suggestions. `logs/hook-errors.jsonl` captures failures. All JSONL, human-readable, auto-trimmed.
+`logs/usage.jsonl` keeps the last 5000 routing decisions (score, model, category, confidence, effort). `logs/learn-suggestions.jsonl` stores LLM fallback suggestions. `logs/hook-errors.jsonl` captures failures. `logs/tool-history.jsonl` (capped 200) tracks tool calls for context bloat detection. `logs/git-router-stats.jsonl` (v3.2.0+) tracks git commit/push routing decisions. All JSONL, human-readable, auto-trimmed. Export Prometheus metrics via `/metrics`.
 
 **Q: How do I reset everything?**
 ```bash
 rm ~/.claude/plugins/cache/<owner>/claude-model-changer/<version>/logs/*.jsonl
 ```
-(Keep `.gitkeep`.) Usage stats, learned keywords, and error history reset.
+(Keep `.gitkeep`.) Usage stats, learned keywords, error history, tool history, git stats all reset.
 
 **Q: Will this work alongside other Claude Code plugins?**
-Yes. The plugin uses the standard hook mechanism and doesn't touch settings it doesn't own. Multiple plugins can contribute hooks to the same event (UserPromptSubmit, etc.).
+Yes. The plugin uses standard hook mechanisms and doesn't touch settings it doesn't own. Multiple plugins can contribute hooks to the same event.
 
 **Q: How do I uninstall?**
 ```bash
 claude plugin uninstall claude-model-changer@r4ck
 ```
 Or delete from `~/.claude/plugins/cache/<owner>/claude-model-changer/<version>/` and remove the entry from `~/.claude/plugins/installed_plugins.json` + `~/.claude/settings.json`.
+
+**Q: How do I update?**
+See [UPDATING.md](UPDATING.md). TL;DR: GitHub-source marketplace with `autoUpdate: true` is zero-touch. Path-source users run `node scripts/update-from-github.js`.
 
 ---
 
@@ -421,14 +583,14 @@ Or delete from `~/.claude/plugins/cache/<owner>/claude-model-changer/<version>/`
 node scripts/preflight.js
 ```
 
-This runs all 10 checks and prints exactly what's broken. Common culprits:
+Runs all 10 checks and prints exactly what's broken. Common culprits:
 - Node not on PATH inside Claude Code's hook environment
-- `~/.claude/plugins/cache/.../scripts/analyze-complexity.js` was modified or deleted
 - `task-routing.json` has a JSON syntax error
+- Hook script was modified or deleted
 
 ### `/health` command
 
-Same checks, but inside Claude Code with a nicer formatted output.
+Same checks, but inside Claude Code with a nicer formatted output. As of v3.1.0 reads the plugin's own `hooks/hooks.json` correctly (was a false-positive warning before).
 
 ### Hook timing out
 
@@ -436,7 +598,11 @@ Default timeout is 60s for `UserPromptSubmit`. If your machine is genuinely slow
 
 ### Wrong model being chosen
 
-Run `/tune` — it analyzes your override history (when you said "use opus instead") and suggests config tweaks (move keywords between models, adjust thresholds, raise/lower weights).
+Run `/tune` — it analyzes your override history (when you said "use opus instead") and suggests config tweaks. Use `/auto-benchmark` to detect drift over time. Use `/complexity --explain <prompt>` to see why a specific prompt scored the way it did.
+
+### Quota downgrade firing too aggressively
+
+Lower `quotaAware.opusDowngradeThreshold` from 0.8 to 0.9 (only downgrade at 90%+) or set `quotaAware.enabled: false` to disable.
 
 ---
 
@@ -452,6 +618,12 @@ node scripts/preflight.js
 # Test the analyzer directly
 echo '{"prompt":"refactor the auth module"}' | node scripts/analyze-complexity.js
 
+# Run unit test suite (79 tests)
+node tests/run-all.js
+
+# Run the auto-benchmark
+node scripts/auto-benchmark.js
+
 # Rebuild the bundled installer after changing source
 node scripts/build-installer.js
 cp install.js dist/install.js
@@ -460,21 +632,35 @@ cp install.js dist/install.js
 ./install.sh
 ```
 
-After source changes, reinstall and restart Claude Code to pick them up. The source installers detect and remove any legacy `@local` registrations from older buggy installs automatically.
+After source changes, reinstall and restart Claude Code to pick them up.
+
+### CI
+
+Every PR runs the [Preflight workflow](.github/workflows/preflight.yml):
+- 10-point preflight check
+- 79 unit tests
+- 3 behavioral tests (typo → haiku, security audit → opus, perf debug → sonnet)
+- Bundle reproducibility check (dist/install.js sync)
+- Version sync check (plugin.json is source of truth)
 
 ---
 
 ## How it compares
 
-| Approach | This plugin | Manual model picking | Always-Opus |
-|----------|-------------|----------------------|-------------|
-| Cost on simple tasks | ~10× cheaper | Same as picked | Always max |
-| Cognitive overhead | None | High (every prompt) | None |
-| Catches "obvious" hard tasks | Yes (auto-opus) | Depends on you | N/A |
-| Multi-language input | EN/HU/DE detected | N/A | N/A |
-| Project-specific rules | Yes | Manual | N/A |
-| Override when wrong | `@haiku`/`@opus` prefix | N/A | N/A |
-| Visible cost tracking | `/stats`, `/dashboard` | None | None |
+| Approach | This plugin | Manual model picking | Always-Opus | Always-Haiku |
+|----------|-------------|----------------------|-------------|--------------|
+| Cost on simple tasks | ~10× cheaper | Same as picked | Always max | Cheap (hits ceiling on hard) |
+| Cognitive overhead | None | High (every prompt) | None | None |
+| Catches "obvious" hard tasks | Yes (auto-opus) | Depends on you | N/A | Misses, struggles |
+| Quota-aware downgrade | Yes (v3.2.0) | No | No | N/A |
+| Context bloat warnings | Yes (v3.2.0) | No | No | No |
+| Multi-language input | EN/HU/DE detected + HU morphology | N/A | N/A | N/A |
+| Project-specific rules | Yes | Manual | N/A | N/A |
+| Override when wrong | `@haiku`/`@opus` prefix | N/A | N/A | N/A |
+| Visible cost tracking | `/stats`, `/dashboard`, `/metrics` | None | None | None |
+| Statusline integration | Yes (v3.2.0) | N/A | N/A | N/A |
+| Git commit hook | Yes (v3.2.0) | N/A | N/A | N/A |
+| Skills/Agent Teams aware | Yes (v3.1.0+) | N/A | N/A | N/A |
 
 ---
 
@@ -482,10 +668,13 @@ After source changes, reinstall and restart Claude Code to pick them up. The sou
 
 PRs welcome. Please:
 
-1. Run `node scripts/preflight.js` before opening — must be all green.
+1. Run `node scripts/preflight.js` and `node tests/run-all.js` before opening — must be all green.
 2. If you change `task-routing.json` keywords, include a `/tune` rationale in the PR description.
 3. For new categories, add 3+ example keywords and a clear `label`.
-4. Hook script changes: please include a manual test command in the PR (e.g., `echo '{...}' | node scripts/your-script.js`).
+4. Hook script changes: include a manual test command in the PR (e.g., `echo '{...}' | node scripts/your-script.js`).
+5. New features: add a config block with `enabled: true` default; document in CHANGELOG and update README.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide.
 
 ---
 
@@ -497,4 +686,6 @@ MIT. See [LICENSE](LICENSE).
 
 ## Credits
 
-Built by [R4CK](https://github.com/R4CK). Inspired by the realization that 80% of my Claude Code prompts didn't need the smartest model in the world — they needed the *fastest* one.
+- Authored by [R4CK](https://github.com/R4CK).
+- Karpathy guidelines skill auto-synced from [`multica-ai/andrej-karpathy-skills`](https://github.com/multica-ai/andrej-karpathy-skills) (MIT).
+- Inspired by community discussions on [r/ClaudeAI](https://www.reddit.com/r/ClaudeAI/) and [r/ClaudeCode](https://www.reddit.com/r/ClaudeCode/) about Claude Code cost optimization.
