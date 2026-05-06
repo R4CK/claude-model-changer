@@ -454,9 +454,9 @@
   },
   "costEstimates": {
     "haiku": {
-      "inputPer1M": 0.25,
-      "outputPer1M": 1.25,
-      "label": "~10x cheaper than opus"
+      "inputPer1M": 1,
+      "outputPer1M": 5,
+      "label": "fast & affordable"
     },
     "sonnet": {
       "inputPer1M": 3,
@@ -468,6 +468,87 @@
       "outputPer1M": 75,
       "label": "most capable, highest cost"
     }
+  },
+  "modelIds": {
+    "haiku": "claude-haiku-4-5",
+    "sonnet": "claude-sonnet-4-6",
+    "opus": "claude-opus-4-7",
+    "opus-1m": "claude-opus-4-7[1m]"
+  },
+  "contextWindows": {
+    "haiku": 200000,
+    "sonnet": 200000,
+    "opus": 200000,
+    "opus-1m": 1000000
+  },
+  "fastMode": {
+    "enabled": true,
+    "detectFromUserSettings": true
+  },
+  "memoryIntegration": {
+    "enabled": true,
+    "influenceEffort": true
+  },
+  "mcpToolAwareness": {
+    "enabled": true,
+    "tools": [
+      "playwright",
+      "browser_",
+      "puppeteer",
+      "github",
+      "gh ",
+      "git pr",
+      "pull request",
+      "slack",
+      "send message",
+      "gmail",
+      "email",
+      "vercel",
+      "netlify",
+      "deploy",
+      "firefox",
+      "fox_",
+      "chrome",
+      "context7",
+      "fetch docs",
+      "memory",
+      "memorize",
+      "scheduled task",
+      "cron"
+    ]
+  },
+  "skillIntegration": {
+    "enabled": true,
+    "overrideRouting": true,
+    "rules": [
+      { "match": "superpowers:debugging", "model": "sonnet", "effort": "high", "reason": "debugging requires deliberation" },
+      { "match": "superpowers:systematic-debugging", "model": "sonnet", "effort": "high", "reason": "systematic debugging requires deliberation" },
+      { "match": "superpowers:test-driven-development", "model": "sonnet", "effort": "medium", "reason": "TDD is moderate complexity" },
+      { "match": "superpowers:writing-plans", "model": "opus", "effort": "high", "reason": "planning is opus territory" },
+      { "match": "superpowers:brainstorming", "model": "opus", "effort": "high", "reason": "brainstorming benefits from opus reasoning" },
+      { "match": "frontend-design", "model": "sonnet", "effort": "medium", "reason": "frontend design is moderate" },
+      { "match": "feature-dev:code-architect", "model": "opus", "effort": "high", "reason": "architecture design is opus" },
+      { "match": "code-review:code-review", "model": "sonnet", "effort": "medium", "reason": "code review is moderate" },
+      { "match": "anthropic-skills:web-artifacts-builder", "model": "sonnet", "effort": "medium", "reason": "elaborate UI artifact" },
+      { "match": "anthropic-skills:skill-creator", "model": "opus", "effort": "high", "reason": "skill creation needs careful design" }
+    ]
+  },
+  "planMode": {
+    "enabled": true,
+    "scoreBoost": 1,
+    "detectFromKeywords": true,
+    "keywords": [
+      "tervezd meg",
+      "készíts tervet",
+      "design plan",
+      "make a plan",
+      "create a plan",
+      "plan the implementation",
+      "tervezzük meg",
+      "step-by-step plan",
+      "architecture plan",
+      "implementation plan"
+    ]
   },
   "logging": {
     "enabled": true
@@ -621,11 +702,15 @@
       ],
       "bug_fixing": [
         "javítsd a hibát",
+        "javítsd ki a hibát",
+        "javítsd a bugot",
+        "javítsd ki a bugot",
         "hibakeresés",
-        "javítsd ki",
         "nem működik",
         "hibás",
-        "debugold"
+        "debugold",
+        "bug",
+        "hibajavítás"
       ],
       "testing": [
         "írj tesztet",
@@ -638,31 +723,45 @@
         "nézd át",
         "kód átnézés",
         "ellenőrizd a kódot",
-        "review"
+        "review",
+        "kód-review",
+        "kódellenőrzés",
+        "vizsgáld át"
       ],
       "small_refactoring": [
         "refaktoráld",
+        "refaktorálás",
+        "reaktorozás",
         "tisztítsd meg",
         "egyszerűsítsd",
-        "optimalizáld"
+        "optimalizáld",
+        "kódtisztítás"
       ],
       "component_creation": [
         "komponens létrehozása",
         "új komponens",
         "osztály létrehozása",
-        "modul készítése"
+        "modul készítése",
+        "kompo",
+        "új modul"
       ],
       "integration": [
         "integráld",
         "csatlakoztasd",
         "kösd össze",
-        "API hozzáadása"
+        "API hozzáadása",
+        "végpont hozzáadása",
+        "endpoint",
+        "adatfolyam"
       ],
       "configuration": [
         "konfiguráld",
         "állítsd be",
         "telepítsd",
-        "inicializáld"
+        "inicializáld",
+        "beállítás",
+        "konfig fájl",
+        "környezeti változó"
       ],
       "error_handling": [
         "hibakezelés",
@@ -684,7 +783,13 @@
         "vezess végig",
         "értsd meg",
         "kövesd végig",
-        "mit csinál ez a függvény"
+        "mit csinál ez a függvény",
+        "vizsgáld ki",
+        "nézz utána",
+        "derítsd ki",
+        "elemezd",
+        "tárd fel",
+        "kutasd fel"
       ],
       "documentation": [
         "dokumentáld",
@@ -696,7 +801,10 @@
         "architektúra",
         "rendszertervezés",
         "tervezési minta",
-        "újratervezés"
+        "újratervezés",
+        "rendszerterv",
+        "magas szintű terv",
+        "blueprintet"
       ],
       "large_refactoring": [
         "teljes refaktorálás",
@@ -943,7 +1051,13 @@
     "enabled": true,
     "emitInOutput": true,
     "emitInSubagentHint": true,
+    "emitThinkingBudget": true,
     "defaultLevel": "medium",
+    "thinkingBudgets": {
+      "low": 0,
+      "medium": 5000,
+      "high": 16000
+    },
     "rules": {
       "highCategories": [
         "architecture",

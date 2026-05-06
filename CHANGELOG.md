@@ -1,5 +1,170 @@
 # Changelog
 
+## v3.1.0 — Claude 4.x awareness, Hungarian morphology, MCP/Skills integration
+
+User-facing improvements driven by the 2025–2026 Claude Code feature set: the
+plugin now knows about the current model lineup (Haiku 4.5, Sonnet 4.6, Opus
+4.7 with a 1M context option), reasons about effort as an extended-thinking
+budget, integrates with Skills/MCP/Plan-mode/Memory, and handles Hungarian
+inflection in keyword matching. Backward compatible: all new behavior is
+config-gated and defaults conservatively.
+
+### Model awareness (Claude 4.x)
+
+* **Updated cost estimates** in `config/task-routing.json:costEstimates`. Haiku
+  bumped from `$0.25/$1.25` (3.5) to `$1/$5` (4.5). Sonnet ($3/$15) and Opus
+  ($15/$75) unchanged. Affects savings reporting in `/stats`.
+* **New `modelIds` block** maps the haiku/sonnet/opus aliases to concrete
+  Claude 4.x IDs: `claude-haiku-4-5`, `claude-sonnet-4-6`, `claude-opus-4-7`.
+  An `opus-1m` entry covers the 1M-context variant `claude-opus-4-7[1m]`.
+* **Per-model context window** (`contextWindows`): 200K for haiku/sonnet/opus,
+  1M for opus-1m. `context-monitor.js` now picks the window based on
+  `state.lastModel` and the `[1m]` suffix in the model ID, so the 75%
+  auto-compact warning no longer fires prematurely on a 1M Opus session.
+
+### Effort → extended-thinking budget mapping
+
+Effort levels now carry an explicit token budget (configurable via
+`config.effort.thinkingBudgets`):
+
+| Effort | Default budget |
+|---|---|
+| low    | 0 (no thinking)    |
+| medium | 5 000 tokens       |
+| high   | 16 000 tokens      |
+
+Hook output appends `| thinking budget: N tokens` to the Effort line so the
+suggestion can flow downstream into a `thinking.budget_tokens` parameter.
+Toggle via `config.effort.emitThinkingBudget`.
+
+### Plan mode awareness (G)
+
+`detectPlanMode(prompt, hookInput, config)` reads the harness-provided
+`permission_mode` field (or `plan_mode` / `permissionMode`) and falls back to
+keyword detection (`tervezd meg`, `make a plan`, `step-by-step plan`, etc.).
+When active, contextBoost is incremented by `config.planMode.scoreBoost`
+(default `+1`), nudging boundary prompts toward sonnet/opus.
+
+### Fast mode integration (C)
+
+`detectFastMode(hookInput, config)` recognizes `fast_mode: true` from the
+hook input or `fastMode: true` in `~/.claude/settings.json`. When active,
+effort is forced to `low` regardless of category — matches the user's
+"prefer speed" intent without recommending expensive thinking.
+
+### MCP tool density sub-score (E)
+
+`scoreMcpToolDensity()` detects mentions of common MCP integrations
+(playwright, github, slack, gmail, vercel, netlify, firefox/fox_,
+context7, scheduled tasks). Each unique tool above 1 adds a small
+contextBoost (capped at +3). Surfaced in the hook output as
+`MCP tools detected: N (...)`.
+
+### Skills system integration (F)
+
+`detectSkillTrigger()` matches explicit skill references in the prompt
+against `config.skillIntegration.rules`. Default rules:
+
+| Skill trigger | Routes to | Effort |
+|---|---|---|
+| `superpowers:debugging` / `systematic-debugging` | sonnet | high |
+| `superpowers:test-driven-development` | sonnet | medium |
+| `superpowers:writing-plans` / `brainstorming` | opus | high |
+| `frontend-design` | sonnet | medium |
+| `feature-dev:code-architect` | opus | high |
+| `code-review:code-review` | sonnet | medium |
+| `anthropic-skills:web-artifacts-builder` | sonnet | medium |
+| `anthropic-skills:skill-creator` | opus | high |
+
+Triggered skills override routing unless `skillIntegration.overrideRouting:
+false` is set.
+
+### Parallel subagent dispatch detection (H)
+
+`detectParallelDispatch()` recognizes "in parallel" / "párhuzamosan" /
+"dispatch N agents" patterns combined with multi-agent vocabulary. When
+detected, contextBoost adds `+2` (orchestration is opus-territory) and
+the hook emits `Parallel dispatch detected — orchestration pattern
+(orchestrator: opus, workers: sonnet)`.
+
+### Hungarian morphology + keyword expansion (I + J)
+
+* **Suffix-aware matching** for `lang === "hu"` translations. The new
+  `matchKeyword()` in `scripts/lib/scoring.js` builds a cached regex per
+  keyword that allows common Hungarian inflectional suffixes after the
+  match: accusative (`-t`/`-ot`/`-et`/`-öt`), locative (`-ban`/`-ben`),
+  dative (`-nak`/`-nek`), instrumental (`-val`/`-vel`), elative (`-ról`/
+  `-ről`), sublative (`-ra`/`-re`), illative (`-ba`/`-be`), causal (`-ért`),
+  plural (`-k` and variants), imperative (`-d`, `-sd`, `-jd`, `-dd`), and
+  possessives. Word-boundary aware via Unicode property escapes.
+* `bug_fixing` Hungarian keywords cleaned up: removed the over-broad
+  `javítsd ki` (which matched any inflected object) and added more
+  specific phrases (`javítsd a hibát`, `javítsd ki a bugot`, `bug`,
+  `hibajavítás`).
+* **~25 new IT-jargon keywords** added across `code_review`,
+  `small_refactoring`, `component_creation`, `integration`,
+  `configuration`, `investigation`, `architecture` — covering common
+  Hungarian developer phrasing (`reaktorozás`, `vizsgáld ki`, `nézz
+  utána`, `kódellenőrzés`, `kód-review`, `endpoint`, `adatfolyam`,
+  `tárd fel`, `magas szintű terv`, etc.).
+
+### Memory file integration (M)
+
+New module `scripts/lib/memory.js` reads Claude Code's auto-memory
+directory (`~/.claude/projects/<sanitized-cwd>/memory/MEMORY.md`) and
+classifies user preferences as terse/thorough. When `effortDecision.level
+=== "medium"` and a clear preference is detected, effort is nudged to
+low/high accordingly. Skipped on HIGH-category decisions to avoid
+softening genuinely complex tasks.
+
+Includes `sanitizeCwd()` matching the harness's empirical sanitization
+(non-alphanumeric → `-`, no collapse).
+
+### Prometheus metrics export (K)
+
+New `scripts/export-prometheus.js` and `--metrics` special command emit
+Prometheus text-format metrics from the existing JSONL logs. Slash
+command `/metrics` (commands/metrics.md) wires it up. Metrics:
+
+* `model_routing_total{model,auto}` — counter
+* `model_routing_score_bucket{le}` — histogram
+* `effort_distribution{level}` — counter
+* `subagent_fallback_total{from,to}` — counter
+* `user_quality_rating_avg{model}` — gauge
+* `session_tokens_estimated_used`, `session_prompt_count`,
+  `session_model_count{model}` — gauges
+
+Designed for periodic scraping or Pushgateway one-shot snapshots; ready
+to drive Grafana dashboards or alertmanager rules.
+
+### Health check fix (N)
+
+`scripts/lib/health.js:checkHooks` previously read `hooks.UserPromptSubmit`
+expecting the events at the top level, but the plugin's `hooks/hooks.json`
+nests events under a `hooks` key (matching Claude Code's settings format).
+The health check now accepts both shapes — and unwraps the nested
+`{ hooks: [{ command, ... }] }` event entries for script-existence checks.
+Eliminates the long-standing `No UserPromptSubmit hooks defined` false
+positive.
+
+### New files
+
+* `scripts/lib/memory.js` — auto-memory integration
+* `scripts/export-prometheus.js` — telemetry exporter
+* `commands/metrics.md` — `/metrics` slash command
+* `FUTURE-WORK.md` — documents three intentionally-deferred items
+  (cron/loop integration, multi-provider routing, React dashboard)
+
+### Backward compatibility
+
+All new behavior is gated by per-feature config blocks (`fastMode`,
+`planMode`, `mcpToolAwareness`, `skillIntegration`, `memoryIntegration`,
+`modelIds`, `contextWindows`, `effort.thinkingBudgets`). Any of them set
+to `enabled: false` reverts to v3.0.1 behavior for that feature. Existing
+configs continue to work — the plugin reads missing fields as defaults.
+
+Version sync 3.0.1 → 3.1.0.
+
 ## v3.0.0 — Architecture refactor (concurrency-safe + hot-reload)
 
 Major release addressing the architectural concerns from the v2.5.0 audit.

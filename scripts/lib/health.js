@@ -159,7 +159,10 @@ function checkHooks() {
   }
 
   try {
-    var hooks = JSON.parse(fs.readFileSync(hooksPath, "utf8"));
+    var hooksRoot = JSON.parse(fs.readFileSync(hooksPath, "utf8").replace(/^﻿/, ""));
+    // The plugin hooks.json uses { "description": "...", "hooks": { "UserPromptSubmit": [...] } }.
+    // Older callers may have written events at the top level; accept both shapes.
+    var hooks = (hooksRoot && typeof hooksRoot.hooks === "object" && hooksRoot.hooks) ? hooksRoot.hooks : hooksRoot;
     var hookTypes = ["UserPromptSubmit", "Stop"];
     hookTypes.forEach(function(hookType) {
       if (!hooks[hookType] || !Array.isArray(hooks[hookType]) || hooks[hookType].length === 0) {
@@ -168,24 +171,27 @@ function checkHooks() {
         return;
       }
       hooks[hookType].forEach(function(hook, idx) {
-        if (hook.command) {
-          // Check if the script referenced exists
-          var cmd = hook.command;
-          if (cmd.includes("analyze-complexity.js") || cmd.includes("enforce-stats.js") || cmd.includes("session-utils.js")) {
-            var scriptName = cmd.match(/[\\/]([^\\/]+\.js)/);
-            if (scriptName) {
-              var scriptPath = path.join(io.BASE_DIR, "scripts", scriptName[1]);
-              if (!fs.existsSync(scriptPath)) {
-                // Try lib subdirectory
-                scriptPath = path.join(io.BASE_DIR, "scripts", "lib", scriptName[1]);
+        // Plugin hooks.json wraps each event in { hooks: [{ command, ... }] }.
+        // Earlier callers passed a single { command, ... } directly; accept both.
+        var inner = (hook && Array.isArray(hook.hooks)) ? hook.hooks : [hook];
+        inner.forEach(function(h) {
+          if (h && h.command) {
+            var cmd = h.command;
+            if (cmd.includes("analyze-complexity.js") || cmd.includes("enforce-stats.js") || cmd.includes("session-utils.js")) {
+              var scriptName = cmd.match(/[\\/]([^\\/]+\.js)/);
+              if (scriptName) {
+                var scriptPath = path.join(io.BASE_DIR, "scripts", scriptName[1]);
                 if (!fs.existsSync(scriptPath)) {
-                  result.status = "warn";
-                  result.issues.push(hookType + "[" + idx + "] references missing script: " + scriptName[1]);
+                  scriptPath = path.join(io.BASE_DIR, "scripts", "lib", scriptName[1]);
+                  if (!fs.existsSync(scriptPath)) {
+                    result.status = "warn";
+                    result.issues.push(hookType + "[" + idx + "] references missing script: " + scriptName[1]);
+                  }
                 }
               }
             }
           }
-        }
+        });
       });
     });
   } catch (e) {

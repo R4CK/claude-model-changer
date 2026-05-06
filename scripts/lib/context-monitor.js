@@ -60,7 +60,6 @@ function resetSessionState(sessionId) {
 function estimateContextUsage(sessionId, prompt, config, loadSessionState) {
   if (!config || !config.contextMonitor || !config.contextMonitor.enabled) return null;
 
-  var maxTokens = config.contextMonitor.maxContextTokens || 200000;
   var thresholds = config.contextMonitor.thresholds || { compactSuggest: 55, compactWarn: 65, compactForce: 75, forceCheaper: 90 };
 
   try {
@@ -70,6 +69,16 @@ function estimateContextUsage(sessionId, prompt, config, loadSessionState) {
     if (detectNewSession(state, sessionId)) {
       state = resetSessionState(sessionId);
     }
+
+    // Per-model context window. Opus 4.7 supports 1M context via the [1m] suffix.
+    // Pick the window for the most recently used model, falling back to opus default.
+    var lastModel = state.lastModel || "opus";
+    var modelIds = (config.modelIds || {});
+    var lastModelId = modelIds[lastModel] || "";
+    var ctxKey = lastModel;
+    if (lastModelId.indexOf("[1m]") !== -1) ctxKey = lastModel + "-1m";
+    var contextWindows = (config.contextWindows || {});
+    var maxTokens = contextWindows[ctxKey] || contextWindows[lastModel] || config.contextMonitor.maxContextTokens || 200000;
 
     var promptTokens = estimateTokens(prompt);
     var promptCount = (state.promptCount || 0) + 1;
