@@ -1,5 +1,89 @@
 # Changelog
 
+## v3.2.1 — Feature harmony fixes (post-v3.2.0 audit)
+
+A self-audit found three feature interaction issues introduced in v3.2.0
+where new signals were silently overridden or duplicated. v3.2.1 fixes them.
+
+### Bug 1 (CRITICAL): Skill trigger and Agent Teams overrides ignored
+
+**Symptom:** A prompt like `superpowers:debugging fix the typo` would emit
+the line `Skill trigger: "superpowers:debugging" → sonnet` but route to
+`haiku` anyway.
+
+**Root cause:** Skill trigger override (line ~298) and Agent Teams override
+(line ~305) ran BEFORE keywordInfluence override (line ~329). When a keyword
+matched (`Typo fixes` → haiku in the example), keywordInfluence reverted the
+skill/teams decision, making the v3.1.0 skill rules and v3.2.0 agent teams
+features no-ops in many real-world cases.
+
+**Fix:** Both overrides now run AFTER keywordInfluence, immediately before
+stickiness/quota. Order: score-based → keywordInfluence → skill trigger →
+agent teams → stickiness → quota downgrade.
+
+**Verification:**
+- `superpowers:debugging fix typo` → sonnet (was haiku) ✓
+- `feature-dev:code-architect fix typo` → opus (was haiku) ✓
+- `as team lead fix typo` → opus (was haiku) ✓
+- `as teammate fix typo` → sonnet (was haiku) ✓
+
+### Bug 2 (MEDIUM): Parallel dispatch + Agent Teams double-counting
+
+**Symptom:** A prompt like `as team lead dispatch agents in parallel` triggered
+both signals, adding +2 contextBoost from parallel dispatch AND a model
+override from Agent Teams. Both target the same orchestrator pattern;
+parallel's score boost was redundant.
+
+**Fix:** When `agentTeamsRole.role === "lead"`, skip the +2 parallelDispatch
+contextBoost. Both signals are still emitted in the output for visibility,
+but only one impacts scoring.
+
+### Bug 3 (LOW): Pattern match short-circuited too aggressively
+
+**Symptom:** A saved pattern would early-return without computing quota state
+or effort, so a saved opus pattern fired even when weekly opus quota was
+exhausted, and never emitted a thinking-budget hint.
+
+**Fix:** Pattern match path now computes `quotaState` + `quotaDowngrade` and
+synthesizes an `effort` decision based on the matched model's tier
+(haiku=low, sonnet=medium, opus=high). The pattern still wins routing, but
+quota-aware downgrade still applies.
+
+### Performance: Two PreToolUse hooks merged
+
+**Issue:** v3.2.0 wired `Read|Bash` to context-bloat-detect AND `Bash` to
+git-commit-hook. On every Bash command, both ran sequentially, spawning two
+Node processes (cumulative 5s + 8s timeout, ~0.5s wall clock locally).
+
+**Fix:** New `scripts/pre-tool-router.js` is a single hook that delegates to
+both detectors internally. `hooks/hooks.json` now wires only this one hook
+on `Read|Bash`. The original two scripts are retained for direct invocation
+but no longer auto-fire.
+
+**Result:** ~50% fewer process spawns on Bash commands; output messages
+merged into one combined `systemMessage`.
+
+### Tests
+
+- 79/79 unit tests pass (no regressions)
+- All 4 bug-1 cases now route correctly
+- Auto-benchmark drift: 0 cases (still 8/10 baseline pass)
+- Combined PreToolUse hook output verified
+
+### Files modified
+
+- `scripts/analyze-complexity.js` — pipeline reordering, pattern-match enrichment
+- `hooks/hooks.json` — single PreToolUse entry
+- `scripts/pre-tool-router.js` (new) — combined hook router
+
+### Backward compatibility
+
+All v3.2.0 config blocks remain valid. The two original PreToolUse scripts
+(`context-bloat-detect.js`, `git-commit-hook.js`) still work standalone for
+testing, just not invoked automatically anymore.
+
+Version sync 3.2.0 → 3.2.1.
+
 ## v3.2.0 — Quota awareness, statusline, context bloat, agent teams, git hooks, auto-benchmark
 
 Eight new features driven by community research (Reddit r/ClaudeAI / r/ClaudeCode,

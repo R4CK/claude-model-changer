@@ -29,17 +29,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/context-bloat-detect.js\"",
-            "timeout": 5
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/git-commit-hook.js\"",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/pre-tool-router.js\"",
             "timeout": 8
           }
         ]
