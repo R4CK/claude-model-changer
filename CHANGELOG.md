@@ -1,5 +1,178 @@
 # Changelog
 
+## v3.3.0 — Seven community-driven features (fallback learning, whatif, undo, token preview, weekly digest, profiles, proactive compact)
+
+A coordinated batch of features driven by community research and the v3.2.x
+audit. Every addition is config-gated and harmonized with the existing
+pipeline — see "Harmonization audit" at the end.
+
+### R30 — Fallback feedback loop
+
+`scripts/lib/fallback-learn.js` (new). When the haiku-worker emits
+`[FALLBACK:sonnet]` and the SubagentStop hook logs it, this loop reads
+those events from `logs/fallbacks.jsonl` over the last 30 days, computes
+per-category fallback rates, and auto-boosts the keyword score by +2 for
+any category exceeding 30% fallback rate (with ≥5 samples).
+
+The boost runs IMMEDIATELY AFTER the keyword score is computed, so it
+flows into the rest of the pipeline naturally. Completely separate from
+adaptive weights (which learn from `quality.jsonl` user ratings) — the
+two signals are complementary: human feedback vs machine feedback.
+
+* New slash command: `/fallback-learn`
+* Config: `fallbackLearning.{enabled, windowDays, rateThreshold, minSamples, boostPoints}`
+* 6h cache TTL on `logs/fallback-learn.json` for fast hot-path lookup
+
+### R31 — `/whatif` config simulator
+
+`scripts/whatif.js` (new). Replays the last 500 prompts under a hypothetical
+config change to preview routing impact before you commit.
+
+```
+node scripts/whatif.js move "refactor" sonnet opus
+node scripts/whatif.js threshold opus '[7,10]'
+node scripts/whatif.js add-keyword sonnet bug_fixing "investigate timeout"
+node scripts/whatif.js disable mcpToolAwareness
+```
+
+Output: routing changes count, cost delta with weekly extrapolation,
+distribution before/after, sample changed prompts. **Read-only** — never
+modifies the real config.
+
+* New slash command: `/whatif`
+* Uses a simplified routing path (keyword + scoreRange only); session-
+  state-dependent overrides like skill triggers, agent teams, and quota
+  downgrade are NOT replayed (documented in the slash command).
+
+### R32 — Proactive compact suggestion
+
+`scripts/lib/context-monitor.js` extended with `detectTopicShift()` and
+`computeProactiveSuggestion()`. Combines context window % with topic-
+similarity drop (Jaccard against last 3 prompts' topic words):
+
+| Trigger | Suggestion level |
+|---|---|
+| Context ≥ 75% | `force` (auto-compact imminent) |
+| Context ≥ 65% | `warn` (strongly recommend) |
+| Topic shift + ≥ 50% | `suggest` (you switched tasks) |
+| Context ≥ 55% | `suggest` (gentle) |
+| Topic shift + < 50% | `topic` (just FYI) |
+
+Output line uses icons (⛔ / ⚠ / 💡). Composes with the existing
+`isCompact{Suggest, Warn, Force}` flags — this is the unified user-
+facing message.
+
+* Config: `proactiveCompact.{enabled, topicShiftThresholdPercent}`
+
+### R33 — `/undo` last routing
+
+`scripts/lib/last-routing.js` (new). Every routing decision is persisted
+to `logs/last-routing.json`. The `/undo` slash command:
+
+1. Reads the last decision (with 10-minute staleness limit)
+2. Escalates to the next-tier model: haiku → sonnet → opus
+3. Auto-rates the original decision as quality 1 (poor) in
+   `logs/quality.jsonl` so adaptive weights learn from your correction
+4. Outputs a re-route instruction for Claude to follow
+
+* New slash command: `/undo`
+* Config: `undo.{enabled, maxAgeSec}`
+
+### R35 — Token estimator preview
+
+`analyze-complexity.js` extended. Every routing decision now emits:
+
+```
+Tokens preview: ~7 in + ~1500 out → $0.0225 at sonnet (haiku $0.0075 · sonnet $0.0225 · opus $0.1126)
+```
+
+Composes with `/quota` and `/context-audit` for full cost visibility.
+
+* Config: `tokenPreview.{enabled, avgResponseTokens}`
+
+### R36 — Weekly cost digest
+
+`scripts/weekly-digest.js` (new). Generates a narrative markdown report
+comparing this week to last week:
+
+- Total prompts (week-over-week)
+- Cost estimate (vs last week, vs all-opus baseline, savings %)
+- Active profile (R43 integration)
+- Model distribution + percentages
+- Effort breakdown (low / medium / high)
+- Top 5 categories
+- Quality avg + fallback events count
+- Git activity (commits, pushes, force-pushes)
+- Anomalies (opus usage spikes)
+
+Saves to `logs/weekly-digest-YYYY-MM-DD.md`. Designed for `/loop 7d` or
+the `scheduled-tasks` MCP.
+
+* New slash command: `/weekly-digest`
+* Config: `weeklyDigest.{enabled, writeToLogs}`
+
+### R43 — Multi-profile / multi-account switching
+
+`scripts/lib/profile-manager.js` (new). Profiles are partial config files
+at `~/.claude/profiles/<name>.json` that overlay on top of the base
+`task-routing.json`.
+
+**Overlay order (longest-specificity wins):**
+
+```
+base task-routing.json
+  → learned-keywords.json (auto-learned vocabulary)
+  → R43 profile (~/.claude/profiles/<active>.json)         ← NEW
+  → per-project .claude/model-routing.json                  ← still strongest
+```
+
+The profile is applied in `lib/config.js:loadConfig()` between
+learned-keywords and per-project overrides — so per-project files still
+win for project-specific rules, but profiles let you switch global
+"personal vs work" or "cost-saver vs quality-first" stances.
+
+* New slash command: `/profile` (sub-commands: `list`, `current`, `switch`, `clear`)
+* Config: `profiles.{enabled, autoSwitchByCwd}`
+* Resolution order: cwd-mapped (in `.project-map.json`) > globally active > none
+
+Auto-switch by cwd via `~/.claude/profiles/.project-map.json` (longest path-
+prefix wins). Use `--profile-switch <name>` to set globally active.
+
+### Harmonization audit
+
+All 7 features were checked against the v3.2.x pipeline. Findings:
+
+| Interaction | Resolution |
+|---|---|
+| R30 boost vs adaptive weights | Different sources (fallback log vs quality log); both add boost cleanly |
+| R30 boost vs auto-tune | Auto-tune SUGGESTS new keywords; R30 BOOSTS existing categories |
+| R31 quickRoute vs full pipeline | Documented limit: skill triggers/agent teams/quota not replayed (session-state-dependent) |
+| R32 proactive vs context-monitor flags | Combined into single user-facing line; flags retained for downstream |
+| R33 /undo vs manual override | Manual = pre-decision; undo = post-decision; no conflict |
+| R35 token preview vs context-monitor | Per-prompt cost ADD; context-monitor stays for cumulative % |
+| R36 digest vs /stats | /stats real-time JSON; digest weekly markdown narrative |
+| R43 profile vs per-project override | Per-project still wins (overlay order: base → learned → profile → project) |
+
+### Files added (12)
+
+- `scripts/lib/fallback-learn.js`
+- `scripts/lib/last-routing.js`
+- `scripts/lib/profile-manager.js`
+- `scripts/whatif.js`
+- `scripts/weekly-digest.js`
+- `commands/undo.md`, `commands/whatif.md`, `commands/profile.md`, `commands/weekly-digest.md`, `commands/fallback-learn.md`
+
+### Files modified (3)
+
+- `scripts/analyze-complexity.js` — integrate fallback boost, token preview,
+  /undo persistence, profile annotation; new special commands
+- `scripts/lib/config.js` — apply profile overlay between learned and project
+- `scripts/lib/context-monitor.js` — proactive suggestion + topic-shift
+
+Tests: 79/79 still pass; preflight green.
+
+Version sync 3.2.3 → 3.3.0.
+
 ## v3.2.3 — Comprehensive README refresh
 
 A documentation-only release that brings the README up to date with everything

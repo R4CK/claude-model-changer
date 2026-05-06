@@ -92,6 +92,13 @@ function estimateContextUsage(sessionId, prompt, config, loadSessionState) {
     var estimatedUsed = systemOverhead + priorTokens + currentTurnTokens + toolOverhead;
     var percentage = Math.round((estimatedUsed / maxTokens) * 100);
 
+    // v3.3.0 (R32): proactive compact suggestion combines threshold + topic-shift.
+    // Even when context isn't yet at the warn level, if the user has clearly
+    // switched topics (low topic-similarity vs the last few prompts), suggest
+    // /clear to keep the session focused.
+    var topicShift = detectTopicShift(state, prompt);
+    var proactive = computeProactiveSuggestion(percentage, topicShift, thresholds, config);
+
     return {
       estimatedUsed: estimatedUsed,
       maxTokens: maxTokens,
@@ -104,9 +111,76 @@ function estimateContextUsage(sessionId, prompt, config, loadSessionState) {
       isCritical: percentage >= thresholds.forceCheaper,
       isCompactForce: percentage >= (thresholds.compactForce || 75),
       isCompactWarn: percentage >= (thresholds.compactWarn || 65),
-      isCompactSuggest: percentage >= (thresholds.compactSuggest || 55)
+      isCompactSuggest: percentage >= (thresholds.compactSuggest || 55),
+      topicShift: topicShift,             // v3.3.0
+      proactiveSuggestion: proactive      // v3.3.0
     };
   } catch (err) { return null; }
+}
+
+// v3.3.0 (R32): Topic-shift detection. Compares the current prompt's content
+// words against the last N prompts' topic words. Returns an object with
+// `shifted` (bool), `similarity` (0..1), and `reason`.
+function detectTopicShift(state, currentPrompt) {
+  try {
+    var prev = (state && state.recentPrompts) || [];
+    if (prev.length < 2) return { shifted: false, similarity: 1, reason: "not enough history" };
+    var stop = ["the","a","an","and","or","of","to","in","on","at","for","with","by","is","are","was","were","be","been","this","that","these","those","it","its"];
+    function tokenize(s) {
+      return String(s || "").toLowerCase().split(/\W+/).filter(function(w) { return w.length > 2 && stop.indexOf(w) === -1; });
+    }
+    var current = new Set(tokenize(currentPrompt));
+    if (current.size === 0) return { shifted: false, similarity: 1, reason: "empty current" };
+    // Aggregate the last 3 prompts' words
+    var recentWords = new Set();
+    prev.slice(-3).forEach(function(p) {
+      (p.words || []).forEach(function(w) { if (w && stop.indexOf(w) === -1 && w.length > 2) recentWords.add(w.toLowerCase()); });
+    });
+    if (recentWords.size === 0) return { shifted: false, similarity: 1, reason: "no recent words" };
+    // Jaccard similarity
+    var intersect = 0;
+    current.forEach(function(w) { if (recentWords.has(w)) intersect++; });
+    var unionSize = current.size + recentWords.size - intersect;
+    var sim = unionSize > 0 ? intersect / unionSize : 0;
+    var threshold = 0.15; // <15% overlap = topic shift
+    return {
+      shifted: sim < threshold,
+      similarity: Math.round(sim * 100) / 100,
+      reason: sim < threshold ? "low overlap with last 3 prompts" : "consistent topic"
+    };
+  } catch (e) {
+    return { shifted: false, similarity: 1, reason: "error" };
+  }
+}
+
+// v3.3.0 (R32): Combine context % + topic shift into a single suggestion.
+// Levels:
+//   "force"   — context ≥ compactForce (75%): you must compact
+//   "warn"    — context ≥ compactWarn (65%): strongly recommend
+//   "suggest" — context ≥ compactSuggest (55%) OR topic shift at 50%+: gentle
+//   "topic"   — context < 55% but topic shifted: very gentle (just FYI)
+//   null      — nothing to say
+function computeProactiveSuggestion(percentage, topicShift, thresholds, config) {
+  var cfg = (config && config.proactiveCompact) || {};
+  if (cfg.enabled === false) return null;
+  var topicAggressivePct = typeof cfg.topicShiftThresholdPercent === "number" ? cfg.topicShiftThresholdPercent : 50;
+
+  if (percentage >= (thresholds.compactForce || 75)) {
+    return { level: "force", message: "Context " + percentage + "% — auto-compact will trigger. Run /compact or /clear now." };
+  }
+  if (percentage >= (thresholds.compactWarn || 65)) {
+    return { level: "warn", message: "Context " + percentage + "% — strongly recommend /compact or /clear." };
+  }
+  if (topicShift && topicShift.shifted && percentage >= topicAggressivePct) {
+    return { level: "suggest", message: "Topic shift detected (similarity " + topicShift.similarity + ") with context at " + percentage + "% — consider /clear before continuing." };
+  }
+  if (percentage >= (thresholds.compactSuggest || 55)) {
+    return { level: "suggest", message: "Context " + percentage + "% — consider /compact when you next switch tasks." };
+  }
+  if (topicShift && topicShift.shifted) {
+    return { level: "topic", message: "Topic shift detected (similarity " + topicShift.similarity + "). Context only at " + percentage + "%, but a /clear keeps results focused." };
+  }
+  return null;
 }
 
 // ---- HANDOFF SUMMARY ----
