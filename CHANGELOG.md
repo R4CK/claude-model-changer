@@ -1,5 +1,56 @@
 # Changelog
 
+## v3.1.1 — Karpathy skills auto-sync on SessionStart
+
+Closes the gap where karpathy-guidelines was only installed when the user
+manually ran `scripts/install-plugin.js` — marketplace-installed users (the
+default Claude Code workflow) never got the skill.
+
+### New: `scripts/karpathy-session-sync.js`
+
+Throttled, fire-and-forget helper that keeps `skills/karpathy-guidelines/`
+in sync with the upstream [`multica-ai/andrej-karpathy-skills`](https://github.com/multica-ai/andrej-karpathy-skills)
+repository.
+
+* **Throttle:** stamp file at `logs/karpathy-last-sync.json`. If the last sync
+  was within `intervalHours` (default 24h), the script no-ops immediately.
+* **Background:** spawns a detached child for the actual `git fetch` so the
+  hook returns in milliseconds. The user's session is never blocked by a
+  slow network.
+* **Silent:** all output goes to `/dev/null`. Errors land in
+  `logs/hook-errors.jsonl` via `error-log` for diagnosability.
+* **Configurable** via `config.karpathySync` (`enabled`, `intervalHours`,
+  `background`).
+
+### `scripts/runtime-check.js` integration
+
+The existing SessionStart hook now spawns the karpathy sync child on every
+session start (subject to throttle). Measured cost: <0.3s wall-clock added
+to session start in the worst case (cold first run on a fast network).
+Subsequent starts within the throttle window are essentially free.
+
+### Behavior matrix
+
+| State | Behavior |
+|---|---|
+| Marketplace install (no installer run) | First session triggers initial clone in background |
+| Existing install, sync stamp <24h | Skip — no work done |
+| Existing install, sync stamp >24h | Detached `git fetch` in background, stamp updated |
+| `karpathySync.enabled: false` | All session-start syncs disabled |
+| Network failure | Stamp still updated, retry next interval (no error surfaced) |
+
+### Why this matters
+
+Before v3.1.1, the karpathy-guidelines skill required users to manually run
+`node scripts/install-plugin.js` after marketplace install. Most users never
+did this, so the skill — which is the headline feature of v3.0.1 — was
+silently absent for them. v3.1.1 makes it just-in-time and zero-effort.
+
+Files added: `scripts/karpathy-session-sync.js`.
+Files modified: `scripts/runtime-check.js`, `config/task-routing.json`.
+
+Version sync 3.1.0 → 3.1.1.
+
 ## v3.1.0 — Claude 4.x awareness, Hungarian morphology, MCP/Skills integration
 
 User-facing improvements driven by the 2025–2026 Claude Code feature set: the
