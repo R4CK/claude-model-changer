@@ -20,6 +20,18 @@ var cp = require("child_process");
 var PLUGIN_ROOT = path.resolve(__dirname, "..");
 var PREFLIGHT = path.join(__dirname, "preflight.js");
 
+// v3.1.1: kick off karpathy skill sync (throttled, backgrounded by default).
+// This is fire-and-forget — spawn a detached child that returns immediately
+// so it never adds latency to session start. See scripts/karpathy-session-sync.js.
+try {
+  var syncChild = cp.spawn(process.execPath, [path.join(__dirname, "karpathy-session-sync.js")], {
+    detached: true,
+    stdio: "ignore",
+    windowsHide: true
+  });
+  if (syncChild && typeof syncChild.unref === "function") syncChild.unref();
+} catch (e) { /* never block session start */ }
+
 try {
   var result = cp.spawnSync(process.execPath, [PREFLIGHT, "--runtime", "--json", "--quiet"], {
     encoding: "utf8",

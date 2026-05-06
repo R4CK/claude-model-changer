@@ -485,6 +485,11 @@
     "enabled": true,
     "detectFromUserSettings": true
   },
+  "karpathySync": {
+    "enabled": true,
+    "intervalHours": 24,
+    "background": true
+  },
   "memoryIntegration": {
     "enabled": true,
     "influenceEffort": true
