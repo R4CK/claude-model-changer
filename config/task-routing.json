@@ -490,6 +490,37 @@
     "intervalHours": 24,
     "background": true
   },
+  "quotaAware": {
+    "enabled": true,
+    "opusDowngradeThreshold": 0.8,
+    "opusFallbackModel": "sonnet",
+    "respectBurstLimit": true
+  },
+  "statusline": {
+    "format": "compact",
+    "includeCost": true,
+    "includeIcon": true
+  },
+  "contextBloat": {
+    "enabled": true,
+    "duplicateThreshold": 2,
+    "windowMinutes": 30
+  },
+  "gitHooks": {
+    "enabled": true,
+    "autoMessageModel": "auto",
+    "warnForcePush": true,
+    "trackStats": true,
+    "diffThresholds": {
+      "sonnet": 50,
+      "opus": 500
+    }
+  },
+  "claudeCodeFeatures": {
+    "detectVersion": true,
+    "useInlineThinkingProgress": true,
+    "trustFastMcpStartup": true
+  },
   "memoryIntegration": {
     "enabled": true,
     "influenceEffort": true

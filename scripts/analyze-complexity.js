@@ -36,6 +36,9 @@ var autoTune = require("./lib/auto-tune");
 var learnLog = require("./lib/learn-log");
 var errorLog = require("./lib/error-log");
 var memory = require("./lib/memory");
+var quotaTracker = require("./lib/quota-tracker");
+var ccVersion = require("./lib/cc-version");
+var contextAudit = require("./lib/context-audit");
 
 // Startup cleanup: rotate debug log + trim all JSONL logs
 io.rotateDebugLog();
@@ -220,6 +223,14 @@ function analyzeComplexity(prompt, config, cwd, sessionId, hookInput) {
   var parallelDispatch = scoring.detectParallelDispatch(promptLower);
   if (parallelDispatch.active) contextBoost += 2;  // orchestration is opus-territory
 
+  // v3.2.0: Agent Teams role detection (Claude Code 2.1+).
+  var agentTeamsRole = scoring.detectAgentTeamsRole(promptLower);
+
+  // v3.2.0: Claude Code version awareness — used to inform downstream output
+  // (e.g., emit thinking budget hints in CC2.1 inline format).
+  var ccVer = null;
+  try { ccVer = ccVersion.detect(); } catch (e) { ccVer = null; }
+
   var subScores = { keyword: keywordResult.score, wordCount: wordScore, codeBlocks: codeBlockScore, multiFile: multiFileScore, structure: structuralScore };
   var confidence = scoring.calculateConfidence(subScores);
 
@@ -288,6 +299,18 @@ function analyzeComplexity(prompt, config, cwd, sessionId, hookInput) {
       level = ({ haiku: "SIMPLE", sonnet: "MEDIUM", opus: "COMPLEX" })[model] || level;
     }
   }
+
+  // v3.2.0: Agent Teams role override — orchestrator → opus, teammate → sonnet
+  if (agentTeamsRole && agentTeamsRole.suggestedModel) {
+    model = agentTeamsRole.suggestedModel;
+    level = ({ haiku: "SIMPLE", sonnet: "MEDIUM", opus: "COMPLEX" })[model] || level;
+  }
+
+  // v3.2.0: Quota state is computed eagerly so /stats and statusline can read
+  // it, but the actual downgrade is applied LATER (after all other model-
+  // assignment logic) so we don't get re-overwritten by keywordInfluence.
+  var quotaState = null, quotaDowngrade = null;
+  try { quotaState = quotaTracker.getQuotaState(config); } catch (e) {}
 
   // Keyword category influence — configurable strength
   // "override" (default/legacy): keyword match forces model assignment
@@ -386,6 +409,16 @@ function analyzeComplexity(prompt, config, cwd, sessionId, hookInput) {
     };
   }
 
+  // v3.2.0: Quota-aware downgrade — applied LAST so it takes precedence over
+  // keyword-influence override and any other model-assignment branch.
+  try {
+    quotaDowngrade = quotaTracker.shouldDowngrade(model, quotaState, config);
+    if (quotaDowngrade && quotaDowngrade.downgrade) {
+      model = quotaDowngrade.toModel;
+      level = ({ haiku: "SIMPLE", sonnet: "MEDIUM", opus: "COMPLEX" })[model] || level;
+    }
+  } catch (e) { /* never break routing */ }
+
   return {
     score: finalScore, rawScore: Math.round(rawScore * 100) / 100, level: level, model: model, override: false,
     matchedCategory: keywordResult.matchedCategory,
@@ -406,6 +439,10 @@ function analyzeComplexity(prompt, config, cwd, sessionId, hookInput) {
     mcpTools: mcpResult,  // v3.1.0: { score, matchedTools, count }
     skillTrigger: skillTrigger,  // v3.1.0: { skill, suggestedModel, ... } or null
     parallelDispatch: parallelDispatch,  // v3.1.0: { active, suggestion }
+    agentTeamsRole: agentTeamsRole,  // v3.2.0: { role, suggestedModel, suggestedEffort, reason } or null
+    quotaState: quotaState,  // v3.2.0: full quota snapshot or null
+    quotaDowngrade: quotaDowngrade,  // v3.2.0: { downgrade, toModel, reason } or null
+    ccVersion: ccVer,  // v3.2.0: { version, features, detectedFrom } or null
     effort: effortDecision,  // v2.7.0: { level: "low"|"medium"|"high", reason: "..." } or null
     // T2.1 (v2.5.0): detailed internals exposed for --explain mode
     explain: {
@@ -513,6 +550,53 @@ process.stdin.on("end", function() {
           return exporter.buildMetrics();
         } catch (e) {
           return "# error generating metrics: " + e.message + "\n";
+        }
+      },
+      "--quota": function() {
+        // v3.2.0: Quota state report
+        var qaCfg = configModule.loadConfig(cwd);
+        var qs = quotaTracker.getQuotaState(qaCfg);
+        return JSON.stringify(qs, null, 2);
+      },
+      "--context-audit": function() {
+        // v3.2.0: Context bloat audit
+        var audit = contextAudit.buildAudit({ windowMinutes: 60 });
+        return JSON.stringify(audit, null, 2);
+      },
+      "--git-router-stats": function() {
+        // v3.2.0: Git commit/push routing stats
+        try {
+          var fs2 = require("fs"), path2 = require("path");
+          var statsFile = path2.join(__dirname, "..", "logs", "git-router-stats.jsonl");
+          if (!fs2.existsSync(statsFile)) return JSON.stringify({ totalCommits: 0, totalPushes: 0, message: "No git router activity yet" }, null, 2);
+          var entries = fs2.readFileSync(statsFile, "utf8").trim().split("\n")
+            .filter(function(l) { return l.length > 0; })
+            .map(function(l) { try { return JSON.parse(l); } catch (e) { return null; } })
+            .filter(Boolean);
+          var thirtyDaysAgo = Date.now() - 30 * 24 * 3600 * 1000;
+          entries = entries.filter(function(e) { return Date.parse(e.timestamp) >= thirtyDaysAgo; });
+          var commits = entries.filter(function(e) { return e.op === "commit"; });
+          var pushes = entries.filter(function(e) { return e.op === "push"; });
+          var byModel = { haiku: 0, sonnet: 0, opus: 0 };
+          var totalLines = 0, maxDiff = 0;
+          commits.forEach(function(c) {
+            if (byModel[c.recommended] !== undefined) byModel[c.recommended]++;
+            if (c.diff) {
+              var lines = (c.diff.insertions || 0) + (c.diff.deletions || 0);
+              totalLines += lines;
+              if (lines > maxDiff) maxDiff = lines;
+            }
+          });
+          return JSON.stringify({
+            totalCommits: commits.length,
+            totalPushes: pushes.length,
+            forcePushes: pushes.filter(function(p) { return p.forcePush; }).length,
+            commitsByRecommendedModel: byModel,
+            avgDiffLines: commits.length > 0 ? Math.round(totalLines / commits.length) : 0,
+            largestDiffLines: maxDiff
+          }, null, 2);
+        } catch (e) {
+          return JSON.stringify({ error: e.message }, null, 2);
         }
       }
     };
@@ -755,6 +839,16 @@ process.stdin.on("end", function() {
 
     if (result.parallelDispatch && result.parallelDispatch.active) {
       lines.push("Parallel dispatch detected — orchestration pattern (" + result.parallelDispatch.suggestion + ")");
+    }
+
+    if (result.agentTeamsRole) {
+      lines.push("Agent Teams role: " + result.agentTeamsRole.role + " → " + result.agentTeamsRole.suggestedModel + " (" + result.agentTeamsRole.reason + ")");
+    }
+
+    if (result.quotaDowngrade && result.quotaDowngrade.downgrade) {
+      lines.push("⚠ Quota downgrade: opus → " + result.quotaDowngrade.toModel + " (" + result.quotaDowngrade.reason + ")");
+    } else if (result.quotaState && result.quotaState.weeklyPct.opus >= 70) {
+      lines.push("Quota notice: Opus weekly at " + result.quotaState.weeklyPct.opus + "% — consider rationing");
     }
 
     if (result.detectedLanguage && result.detectedLanguage !== "en") {
