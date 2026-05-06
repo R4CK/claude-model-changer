@@ -35,6 +35,7 @@ var health = require("./lib/health");
 var autoTune = require("./lib/auto-tune");
 var learnLog = require("./lib/learn-log");
 var errorLog = require("./lib/error-log");
+var memory = require("./lib/memory");
 
 // Startup cleanup: rotate debug log + trim all JSONL logs
 io.rotateDebugLog();
@@ -87,7 +88,59 @@ function writeStatusFile(result, contextUsage, budget, anomalies, apiLimits, ses
 
 // ---- MAIN ANALYSIS ----
 
-function analyzeComplexity(prompt, config, cwd, sessionId) {
+// v3.1.0: detect Claude Code fast mode. The harness either passes fast_mode in
+// the hook input, or it's persisted in ~/.claude/settings.json under "fastMode".
+// In fast mode we override effort to "low" so the routing hint matches the user's
+// "I want speed" intent regardless of category.
+function detectFastMode(hookInput, config) {
+  if (!config || !config.fastMode || config.fastMode.enabled === false) return { active: false, source: "disabled" };
+  if (hookInput) {
+    var fm = hookInput.fast_mode || hookInput.fastMode;
+    if (fm === true || fm === "true") return { active: true, source: "hook input fast_mode" };
+  }
+  if (config.fastMode.detectFromUserSettings !== false) {
+    try {
+      var path = require("path");
+      var fs = require("fs");
+      var home = process.env.USERPROFILE || process.env.HOME || "";
+      if (home) {
+        var settingsPath = path.join(home, ".claude", "settings.json");
+        if (fs.existsSync(settingsPath)) {
+          var raw = fs.readFileSync(settingsPath, "utf8").replace(/^﻿/, "");
+          var s = JSON.parse(raw);
+          if (s && s.fastMode === true) return { active: true, source: "~/.claude/settings.json fastMode" };
+        }
+      }
+    } catch (e) {}
+  }
+  return { active: false, source: "not detected" };
+}
+
+// v3.1.0: detect plan mode from hook input (Claude Code passes permission_mode)
+// or fall back to plan-mode keywords in the prompt. Plan mode is intrinsically
+// more complex than straight execution - we surface a small contextBoost so a
+// plan-mode prompt at the haiku/sonnet boundary nudges toward sonnet/opus.
+function detectPlanMode(prompt, hookInput, config) {
+  if (!config || !config.planMode || config.planMode.enabled === false) return { active: false, source: "disabled" };
+  if (hookInput) {
+    var pm = hookInput.permission_mode || hookInput.permissionMode || hookInput.plan_mode;
+    if (pm === "plan" || pm === true) return { active: true, source: "hook input permission_mode" };
+  }
+  if (config.planMode.detectFromKeywords !== false) {
+    var planKeywords = (config.planMode.keywords) || [
+      "tervezd meg", "készíts tervet", "design plan", "make a plan", "create a plan",
+      "plan the implementation", "tervezzük meg", "plan the migration", "step-by-step plan",
+      "architecture plan", "implementation plan"
+    ];
+    var lower = String(prompt || "").toLowerCase();
+    for (var i = 0; i < planKeywords.length; i++) {
+      if (lower.indexOf(planKeywords[i].toLowerCase()) !== -1) return { active: true, source: "prompt keyword: '" + planKeywords[i] + "'" };
+    }
+  }
+  return { active: false, source: "not detected" };
+}
+
+function analyzeComplexity(prompt, config, cwd, sessionId, hookInput) {
   var override = scoring.detectManualOverride(prompt, config);
   if (override) {
     return {
@@ -149,6 +202,24 @@ function analyzeComplexity(prompt, config, cwd, sessionId) {
   var historyBoost = session.getPromptHistoryBoost(prompt, sessionId, config);
   if (historyBoost.boost > 0) contextBoost += historyBoost.boost;
 
+  // v3.1.0: Plan-mode signal — additive contextBoost so plan-mode prompts
+  // nudge toward sonnet/opus even at the boundary score.
+  var planMode = detectPlanMode(prompt, hookInput, config);
+  var planModeBoost = (config && config.planMode && typeof config.planMode.scoreBoost === "number") ? config.planMode.scoreBoost : 1;
+  if (planMode.active) contextBoost += planModeBoost;
+
+  // v3.1.0: MCP tool density — multiple external integrations imply higher
+  // complexity than keyword/multifile alone capture.
+  var mcpResult = scoring.scoreMcpToolDensity(promptLower, config);
+  if (mcpResult.score > 0) contextBoost += mcpResult.score;
+
+  // v3.1.0: Skill trigger detection (explicit skill names in the prompt).
+  var skillTrigger = scoring.detectSkillTrigger(promptLower, config);
+
+  // v3.1.0: Parallel subagent dispatch detection (orchestrator pattern).
+  var parallelDispatch = scoring.detectParallelDispatch(promptLower);
+  if (parallelDispatch.active) contextBoost += 2;  // orchestration is opus-territory
+
   var subScores = { keyword: keywordResult.score, wordCount: wordScore, codeBlocks: codeBlockScore, multiFile: multiFileScore, structure: structuralScore };
   var confidence = scoring.calculateConfidence(subScores);
 
@@ -206,6 +277,16 @@ function analyzeComplexity(prompt, config, cwd, sessionId) {
     if (finalScore <= 3) { level = "SIMPLE"; model = "haiku"; }
     else if (finalScore <= 7) { level = "MEDIUM"; model = "sonnet"; }
     else { level = "COMPLEX"; model = "opus"; }
+  }
+
+  // v3.1.0: Skill trigger override — if a known skill trigger fired and config
+  // says it's authoritative, switch the model.
+  if (skillTrigger && skillTrigger.suggestedModel) {
+    var allowSkillOverride = !(config && config.skillIntegration && config.skillIntegration.overrideRouting === false);
+    if (allowSkillOverride) {
+      model = skillTrigger.suggestedModel;
+      level = ({ haiku: "SIMPLE", sonnet: "MEDIUM", opus: "COMPLEX" })[model] || level;
+    }
   }
 
   // Keyword category influence — configurable strength
@@ -272,6 +353,39 @@ function analyzeComplexity(prompt, config, cwd, sessionId) {
   }
   var effortDecision = scoring.determineEffort(subScores, confidence.confidence, keywordResult.matchedCategory, config, effortCategoryKey);
 
+  // v3.1.0: Memory hint — read the auto-memory directory for terse/thorough
+  // preferences and let them nudge the effort decision (without overriding HIGH
+  // on architecturally complex tasks).
+  var memoryPrefs = null;
+  try { memoryPrefs = memory.readUserPreferences(cwd, config); } catch (e) { memoryPrefs = null; }
+  if (memoryPrefs && memoryPrefs.available && effortDecision && !(config && config.memoryIntegration && config.memoryIntegration.influenceEffort === false)) {
+    var hint = memory.effortHintFromMemory(memoryPrefs);
+    // Only apply if it's a softening, not an override on HIGH categories
+    if (hint && hint.level === "low" && effortDecision.level === "medium") {
+      var lowBudget = (config.effort && config.effort.thinkingBudgets && typeof config.effort.thinkingBudgets.low === "number") ? config.effort.thinkingBudgets.low : 0;
+      effortDecision = { level: "low", reason: hint.reason, thinkingBudget: lowBudget, fromMemory: true };
+    } else if (hint && hint.level === "high" && effortDecision.level === "medium") {
+      var highBudget = (config.effort && config.effort.thinkingBudgets && typeof config.effort.thinkingBudgets.high === "number") ? config.effort.thinkingBudgets.high : 16000;
+      effortDecision = { level: "high", reason: hint.reason, thinkingBudget: highBudget, fromMemory: true };
+    }
+  }
+
+  // v3.1.0: Fast mode override — the user explicitly opted in to speed, so we
+  // pin effort to low regardless of category. This complements the model
+  // recommendation: if Claude Code has fast mode on, it's already using a
+  // faster model variant, and the plugin should not request expensive thinking.
+  // (Fast mode runs LAST so it can override even memory-driven HIGH hints.)
+  var fastMode = detectFastMode(hookInput, config);
+  if (fastMode.active && effortDecision) {
+    var fastBudget = (config.effort && config.effort.thinkingBudgets && typeof config.effort.thinkingBudgets.low === "number") ? config.effort.thinkingBudgets.low : 0;
+    effortDecision = {
+      level: "low",
+      reason: "fast mode active (" + fastMode.source + ") — effort forced low",
+      thinkingBudget: fastBudget,
+      forcedByFastMode: true
+    };
+  }
+
   return {
     score: finalScore, rawScore: Math.round(rawScore * 100) / 100, level: level, model: model, override: false,
     matchedCategory: keywordResult.matchedCategory,
@@ -287,6 +401,11 @@ function analyzeComplexity(prompt, config, cwd, sessionId) {
     stickiness: stickiness, confidence: confidence,
     patternMatch: null, detectedLanguage: detectedLanguage, scores: subScores,
     historyBoost: historyBoost,
+    planMode: planMode,  // v3.1.0: { active: bool, source: "..." }
+    fastMode: fastMode,  // v3.1.0: { active: bool, source: "..." }
+    mcpTools: mcpResult,  // v3.1.0: { score, matchedTools, count }
+    skillTrigger: skillTrigger,  // v3.1.0: { skill, suggestedModel, ... } or null
+    parallelDispatch: parallelDispatch,  // v3.1.0: { active, suggestion }
     effort: effortDecision,  // v2.7.0: { level: "low"|"medium"|"high", reason: "..." } or null
     // T2.1 (v2.5.0): detailed internals exposed for --explain mode
     explain: {
@@ -386,6 +505,15 @@ process.stdin.on("end", function() {
         var cfg = configModule.loadConfig(cwd);
         var report = autoTune.runAutoTune(cfg, true);
         return JSON.stringify(report, null, 2);
+      },
+      "--metrics": function() {
+        // v3.1.0: Prometheus text-format metrics export
+        try {
+          var exporter = require("./export-prometheus");
+          return exporter.buildMetrics();
+        } catch (e) {
+          return "# error generating metrics: " + e.message + "\n";
+        }
       }
     };
 
@@ -492,7 +620,7 @@ process.stdin.on("end", function() {
     // ---- Main analysis ----
     var config = configModule.loadConfig(cwd);
     var safeMode = config && config.safeMode === true;
-    var result = analyzeComplexity(prompt, config, cwd, sessionId);
+    var result = analyzeComplexity(prompt, config, cwd, sessionId, data);
 
     var contextUsage = contextMonitor.estimateContextUsage(sessionId, prompt, config, session.loadSessionState);
     var contextRec = contextMonitor.getContextRecommendation(contextUsage, result.model, config, session.loadSessionState);
@@ -599,9 +727,34 @@ process.stdin.on("end", function() {
     lines.push("Confidence: " + result.confidence.confidence + "% (" + result.confidence.signals + " signals, " + result.confidence.agreement + " agreement)");
 
     // v2.7.0: Emit Effort recommendation (orthogonal to model - reasoning budget)
+    // v3.1.0: Also emit the suggested extended-thinking budget when configured.
     var effortCfg = config && config.effort;
     if (effortCfg && effortCfg.enabled !== false && effortCfg.emitInOutput !== false && result.effort && result.effort.level) {
-      lines.push("Effort: " + result.effort.level + " (" + result.effort.reason + ")");
+      var effortLine = "Effort: " + result.effort.level + " (" + result.effort.reason + ")";
+      if (effortCfg.emitThinkingBudget !== false && typeof result.effort.thinkingBudget === "number") {
+        effortLine += " | thinking budget: " + result.effort.thinkingBudget + " tokens";
+      }
+      lines.push(effortLine);
+    }
+
+    if (result.planMode && result.planMode.active) {
+      lines.push("Plan mode: active (" + result.planMode.source + ") — score boosted +" + ((config && config.planMode && typeof config.planMode.scoreBoost === "number") ? config.planMode.scoreBoost : 1));
+    }
+
+    if (result.fastMode && result.fastMode.active) {
+      lines.push("Fast mode: active (" + result.fastMode.source + ") — effort forced low");
+    }
+
+    if (result.mcpTools && result.mcpTools.count >= 2) {
+      lines.push("MCP tools detected: " + result.mcpTools.count + " (" + result.mcpTools.matchedTools.slice(0, 5).join(", ") + ")");
+    }
+
+    if (result.skillTrigger) {
+      lines.push("Skill trigger: \"" + result.skillTrigger.skill + "\" → " + result.skillTrigger.suggestedModel + (result.skillTrigger.reason ? " (" + result.skillTrigger.reason + ")" : ""));
+    }
+
+    if (result.parallelDispatch && result.parallelDispatch.active) {
+      lines.push("Parallel dispatch detected — orchestration pattern (" + result.parallelDispatch.suggestion + ")");
     }
 
     if (result.detectedLanguage && result.detectedLanguage !== "en") {

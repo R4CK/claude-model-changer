@@ -41,6 +41,37 @@ function detectLanguage(prompt) {
 
 // ---- KEYWORD SCORING ENGINE ----
 
+// Hungarian morphology: match a keyword followed by a common inflectional suffix.
+// Covers accusative (-t, -ot, -et, -öt, -at), locative (-ban/-ben, -ban/-ben),
+// dative (-nak/-nek), instrumental (-val/-vel), elative (-ról/-ről), sublative
+// (-ra/-re), illative (-ba/-be), causal (-ért), plural (-k, -ok, -ek, -ök, -ak),
+// imperative endings (-d, -sd, -jd, -dd), and the "fel/meg/be/ki" + verb
+// composition is handled by the verb keyword itself.
+var HU_SUFFIX_RE = "(?:t|ot|et|öt|at|ok|ek|ök|ak|k|ban|ben|nak|nek|val|vel|ról|ről|ra|re|ba|be|ig|ért|d|sd|jd|dd|m|ja|je|jük|jétek|jük|i|im|id|ik)?";
+
+function escapeRegex(s) {
+  return s.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
+}
+
+// Cache compiled patterns per (lang, keyword) to avoid rebuilding on every prompt.
+var KW_REGEX_CACHE = Object.create(null);
+
+function matchKeyword(promptLower, kwLower, lang, useMorphology) {
+  if (!useMorphology || lang !== "hu") {
+    return promptLower.indexOf(kwLower) !== -1 ? promptLower.indexOf(kwLower) : -1;
+  }
+  // Word-boundary aware: keyword must be preceded by start/whitespace/punct,
+  // and followed by an optional Hungarian suffix + word boundary.
+  var cacheKey = "hu:" + kwLower;
+  var re = KW_REGEX_CACHE[cacheKey];
+  if (!re) {
+    re = new RegExp("(?:^|[^\\p{L}\\p{N}])" + escapeRegex(kwLower) + HU_SUFFIX_RE + "(?![\\p{L}\\p{N}])", "u");
+    KW_REGEX_CACHE[cacheKey] = re;
+  }
+  var m = re.exec(promptLower);
+  return m ? m.index : -1;
+}
+
 function scoreKeywordsEngine(promptLower, config, lang) {
   if (!config || !config.models) return { score: 0, matchedModel: "none", matchedCategory: "none", matchLength: 0 };
   var modelScores = { opus: 8, sonnet: 5, haiku: 2 };
@@ -60,10 +91,11 @@ function scoreKeywordsEngine(promptLower, config, lang) {
       var catDef = modelDef.categories[catKey];
       if (!catDef || typeof catDef !== "object") return;
 
+      var morphologyEnabled = !!(config.translations && config.translations[lang || "_"] && config.translations[lang || "_"].morphology !== false) && lang === "hu";
+
       // Position-weighted keyword matching: keywords in the first 30% get 1.5x effective length
-      function addMatch(kwLower, modelName, catLabel) {
-        var idx = promptLower.indexOf(kwLower);
-        if (idx === -1) return;
+      function addMatch(kwLower, modelName, catLabel, idx) {
+        if (idx === undefined || idx === -1) return;
         var positionBoost = (idx < earlyZone) ? 1.5 : 1.0;
         var effectiveLength = Math.round(kwLower.length * positionBoost);
         allMatches.push({ keyword: kwLower, length: effectiveLength, model: modelName, score: modelScores[modelName], category: catLabel, matchLength: kwLower.length, position: idx });
@@ -72,8 +104,9 @@ function scoreKeywordsEngine(promptLower, config, lang) {
       if (!lang && catDef.keywords) {
         catDef.keywords.forEach(function(kw) {
           var kwLower = kw.toLowerCase();
-          if (promptLower.includes(kwLower)) {
-            addMatch(kwLower, modelName, catDef.label || catKey);
+          var idx = promptLower.indexOf(kwLower);
+          if (idx !== -1) {
+            addMatch(kwLower, modelName, catDef.label || catKey, idx);
           }
         });
       }
@@ -83,8 +116,9 @@ function scoreKeywordsEngine(promptLower, config, lang) {
         if (Array.isArray(transKeywords)) {
           transKeywords.forEach(function(kw) {
             var kwLower = kw.toLowerCase();
-            if (promptLower.includes(kwLower)) {
-              addMatch(kwLower, modelName, catDef.label || catKey);
+            var idx = matchKeyword(promptLower, kwLower, lang, morphologyEnabled);
+            if (idx !== -1) {
+              addMatch(kwLower, modelName, catDef.label || catKey, idx);
             }
           });
         }
@@ -362,6 +396,17 @@ var DEFAULT_LOW_CATEGORIES = [
   "imports", "search_list"
 ];
 
+// Map an effort level to an extended-thinking budget (in tokens). Configurable
+// via config.effort.thinkingBudgets; defaults are conservative and align with
+// Claude 4.x extended-thinking guidance (low = no thinking, medium ~ short
+// deliberation, high ~ deep reasoning for opus tasks).
+function thinkingBudgetForEffort(level, config) {
+  var defaults = { low: 0, medium: 5000, high: 16000 };
+  var cfg = (config && config.effort && config.effort.thinkingBudgets) || {};
+  if (typeof cfg[level] === "number" && isFinite(cfg[level]) && cfg[level] >= 0) return cfg[level];
+  return defaults[level] != null ? defaults[level] : defaults.medium;
+}
+
 function determineEffort(scores, confidence, matchedCategory, config, categoryKey) {
   if (!config || !config.effort || config.effort.enabled === false) {
     // Feature disabled - return null so callers know not to emit
@@ -389,7 +434,7 @@ function determineEffort(scores, confidence, matchedCategory, config, categoryKe
       if (md && md.categories && md.categories[categoryKey] && md.categories[categoryKey].defaultEffort) {
         var explicit = String(md.categories[categoryKey].defaultEffort).toLowerCase();
         if (explicit === "low" || explicit === "medium" || explicit === "high") {
-          return { level: explicit, reason: "per-category defaultEffort override" };
+          return { level: explicit, reason: "per-category defaultEffort override", thinkingBudget: thinkingBudgetForEffort(explicit, config) };
         }
       }
     }
@@ -402,28 +447,101 @@ function determineEffort(scores, confidence, matchedCategory, config, categoryKe
   var wc = s.wordCount || 0;
   var conf = typeof confidence === "number" ? confidence : 50;
 
+  function withBudget(level, reason) {
+    return { level: level, reason: reason, thinkingBudget: thinkingBudgetForEffort(level, config) };
+  }
+
   // HIGH triggers (check in priority order)
-  if (mf >= multiFileThreshold) return { level: "high", reason: "multi-file signal (" + mf + " >= " + multiFileThreshold + ")" };
-  if (catSlug && highCats.indexOf(catSlug) !== -1) return { level: "high", reason: "category '" + catSlug + "' is in highCategories" };
-  if (conf < lowConfThreshold && kw > 0) return { level: "high", reason: "low confidence (" + conf + "%) with keyword signal - more deliberation needed" };
-  if (st >= structuralHighThreshold) return { level: "high", reason: "structurally complex prompt (structure=" + st + ")" };
+  if (mf >= multiFileThreshold) return withBudget("high", "multi-file signal (" + mf + " >= " + multiFileThreshold + ")");
+  if (catSlug && highCats.indexOf(catSlug) !== -1) return withBudget("high", "category '" + catSlug + "' is in highCategories");
+  if (conf < lowConfThreshold && kw > 0) return withBudget("high", "low confidence (" + conf + "%) with keyword signal - more deliberation needed");
+  if (st >= structuralHighThreshold) return withBudget("high", "structurally complex prompt (structure=" + st + ")");
 
   // LOW triggers (any of these is enough)
   if (catSlug && lowCats.indexOf(catSlug) !== -1 && conf >= highConfForLow) {
-    return { level: "low", reason: "trivial category '" + catSlug + "' with high confidence (" + conf + "%)" };
+    return withBudget("low", "trivial category '" + catSlug + "' with high confidence (" + conf + "%)");
   }
   // Relaxed: trivial category + matched keyword is enough even without high confidence
   // (typo/rename prompts are short so multi-signal confidence is naturally low)
   if (catSlug && lowCats.indexOf(catSlug) !== -1 && kw > 0) {
-    return { level: "low", reason: "trivial category '" + catSlug + "' with keyword match (confidence=" + conf + "%)" };
+    return withBudget("low", "trivial category '" + catSlug + "' with keyword match (confidence=" + conf + "%)");
   }
   if (wc <= 2 && kw > 0 && conf >= 80) {
-    return { level: "low", reason: "very short prompt (" + wc + ") with confident keyword match" };
+    return withBudget("low", "very short prompt (" + wc + ") with confident keyword match");
   }
 
   // Default
   var defaultLevel = (config.effort.defaultLevel) || "medium";
-  return { level: defaultLevel, reason: "default (no HIGH/LOW triggers fired)" };
+  return withBudget(defaultLevel, "default (no HIGH/LOW triggers fired)");
+}
+
+// v3.1.0: MCP tool density scoring. When a prompt asks for multiple external
+// integrations (browser/playwright, github, slack, gmail, vercel, netlify, etc.),
+// complexity is higher than the keyword count alone suggests because each tool
+// has its own auth, latency, error model. Returns a small additive boost.
+function scoreMcpToolDensity(promptLower, config) {
+  if (!config || !config.mcpToolAwareness || config.mcpToolAwareness.enabled === false) return { score: 0, matchedTools: [] };
+  var tools = (config.mcpToolAwareness.tools) || [
+    "playwright", "browser_", "puppeteer",
+    "github", "gh ", "git pr", "pull request",
+    "slack", "channel", "send message",
+    "gmail", "email",
+    "vercel", "netlify", "deploy",
+    "firefox", "fox_", "chrome",
+    "context7", "fetch docs",
+    "memory", "memorize",
+    "scheduled task", "cron"
+  ];
+  var matched = [];
+  for (var i = 0; i < tools.length; i++) {
+    if (promptLower.indexOf(tools[i].toLowerCase()) !== -1) {
+      matched.push(tools[i]);
+    }
+  }
+  // Small score: 1 tool = 0, 2 tools = 1, 3+ tools = 2 (capped at 3)
+  var unique = matched.length;
+  var score = unique >= 3 ? 3 : (unique >= 2 ? 1 : 0);
+  return { score: score, matchedTools: matched, count: unique };
+}
+
+// v3.1.0: Skills system integration. Detect skill triggers ("superpowers:debugging",
+// "frontend-design", "/health" etc.) — when the prompt explicitly invokes a
+// known skill, route accordingly. Skills like debugging/test-driven-development
+// strongly imply medium-to-high complexity.
+function detectSkillTrigger(promptLower, config) {
+  if (!config || !config.skillIntegration || config.skillIntegration.enabled === false) return null;
+  var skillRules = (config.skillIntegration.rules) || [];
+  for (var i = 0; i < skillRules.length; i++) {
+    var rule = skillRules[i];
+    if (!rule || !rule.match || !rule.model) continue;
+    if (promptLower.indexOf(String(rule.match).toLowerCase()) !== -1) {
+      return {
+        skill: rule.match,
+        suggestedModel: rule.model,
+        suggestedEffort: rule.effort || null,
+        reason: rule.reason || ("skill trigger: " + rule.match)
+      };
+    }
+  }
+  return null;
+}
+
+// v3.1.0: Subagent parallel dispatch detection. The user explicitly asking for
+// parallel work signals an orchestration task — orchestrator should be opus,
+// workers can be sonnet. Returns null when not detected.
+function detectParallelDispatch(promptLower) {
+  var phrases = [
+    "in parallel", "párhuzamosan", "egyidejűleg", "egy időben",
+    "dispatch ", "spawn ", "indíts el több",
+    "futtass több", "multiple agents", "több ügynököt"
+  ];
+  var multiAgentPhrases = ["agents", "ügynök", "subagent", "alügynök", "worker"];
+  var hasParallelPhrase = phrases.some(function(p) { return promptLower.indexOf(p) !== -1; });
+  var hasAgentPhrase = multiAgentPhrases.some(function(p) { return promptLower.indexOf(p) !== -1; });
+  if (hasParallelPhrase && hasAgentPhrase) {
+    return { active: true, suggestion: "orchestrator: opus, workers: sonnet" };
+  }
+  return { active: false };
 }
 
 module.exports = {
@@ -431,6 +549,9 @@ module.exports = {
   scoreKeywords: scoreKeywords,
   scoreKeywordsMultiLang: scoreKeywordsMultiLang,
   scoreKeywordsEngine: scoreKeywordsEngine,
+  scoreMcpToolDensity: scoreMcpToolDensity,
+  detectSkillTrigger: detectSkillTrigger,
+  detectParallelDispatch: detectParallelDispatch,
   scoreWordCount: scoreWordCount,
   scoreCodeBlocks: scoreCodeBlocks,
   scoreMultiFileIndicators: scoreMultiFileIndicators,
