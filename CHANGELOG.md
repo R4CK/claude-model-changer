@@ -1,5 +1,56 @@
 # Changelog
 
+## v3.2.2 — Update flow documentation + path-source helper
+
+A documentation-and-helper release that fills a gap from earlier versions:
+how to actually update the plugin once it's been installed.
+
+### New: `UPDATING.md`
+
+Decision-tree-style document explaining the three install paths and how
+each one updates:
+- **GitHub-source marketplace** — `autoUpdate: true` is the zero-touch path
+- **Path-source marketplace** — manual or via the new helper script
+- **Self-extracting installer** — re-run `install.js` to upgrade
+
+### New: `scripts/update-from-github.js`
+
+Helper for path-source marketplace users (the original-author dev setup
+where `extraKnownMarketplaces.<owner>.source = "path"` rather than
+`"github"`). Pulls the latest tagged release from upstream and overwrites
+the local marketplace tree.
+
+```bash
+node scripts/update-from-github.js               # latest tag
+node scripts/update-from-github.js --tag v3.2.1  # specific version
+node scripts/update-from-github.js --dry         # preview without applying
+```
+
+Skips `logs/`, `.git/`, `node_modules/`, and any path listed in a
+`.update-preserve` file at the marketplace root (for users who keep local
+config edits).
+
+### Background — why this matters
+
+The original local-development setup used `"source": "path"`, which is great
+for editing the plugin locally but means GitHub releases NEVER reach the
+running plugin without manual intervention. Pre-v3.2.2 the only paths to
+"update" were:
+1. Hand-copy files from the GitHub repo
+2. Re-run `install.js` from a release download
+
+v3.2.2 adds a single-command path that's reliable, dry-runnable, and
+preserve-list-aware — closing the loop for path-source users.
+
+### No code-behavior changes
+
+This release adds files only. No routing logic, scoring, or hook code is
+modified. v3.2.1 → v3.2.2 is a no-op for runtime behavior.
+
+Tests: 79/79 still pass; preflight green.
+
+Version sync 3.2.1 → 3.2.2.
+
 ## v3.2.1 — Feature harmony fixes (post-v3.2.0 audit)
 
 A self-audit found three feature interaction issues introduced in v3.2.0
