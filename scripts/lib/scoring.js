@@ -526,6 +526,42 @@ function detectSkillTrigger(promptLower, config) {
   return null;
 }
 
+// v3.2.0: Agent Teams role detection. Claude Code 2.1+ ships Agent Teams
+// (multi-agent orchestrator). When a prompt sounds like a "team lead"
+// orchestrating teammates, route to opus + high effort. When it's a
+// "teammate worker" doing focused work, sonnet/haiku is enough.
+//
+// Heuristic: orchestrator phrases are present-tense imperatives describing
+// coordination ("coordinate", "delegate", "synthesize findings"); teammate
+// phrases are receiver-style ("you are teammate X", "your task is",
+// "report your findings to lead").
+function detectAgentTeamsRole(promptLower) {
+  var leadPhrases = [
+    "as team lead", "you are the team lead", "coordinate the team",
+    "delegate to teammate", "delegate to teammates", "synthesize the findings",
+    "merge teammate", "as orchestrator", "you orchestrate", "split the work",
+    "as the lead", "csapatvezetőként", "koordináld",
+    "verteile an teammates"
+  ];
+  var teammatePhrases = [
+    "you are teammate", "as teammate", "report to lead", "your subtask is",
+    "as a worker", "focused subtask", "report findings back",
+    "te vagy a teammate", "csapattag vagy",
+    "du bist teammate"
+  ];
+  for (var i = 0; i < leadPhrases.length; i++) {
+    if (promptLower.indexOf(leadPhrases[i]) !== -1) {
+      return { role: "lead", suggestedModel: "opus", suggestedEffort: "high", reason: "team lead phrase: '" + leadPhrases[i] + "'" };
+    }
+  }
+  for (var j = 0; j < teammatePhrases.length; j++) {
+    if (promptLower.indexOf(teammatePhrases[j]) !== -1) {
+      return { role: "teammate", suggestedModel: "sonnet", suggestedEffort: "medium", reason: "teammate phrase: '" + teammatePhrases[j] + "'" };
+    }
+  }
+  return null;
+}
+
 // v3.1.0: Subagent parallel dispatch detection. The user explicitly asking for
 // parallel work signals an orchestration task — orchestrator should be opus,
 // workers can be sonnet. Returns null when not detected.
@@ -552,6 +588,7 @@ module.exports = {
   scoreMcpToolDensity: scoreMcpToolDensity,
   detectSkillTrigger: detectSkillTrigger,
   detectParallelDispatch: detectParallelDispatch,
+  detectAgentTeamsRole: detectAgentTeamsRole,
   scoreWordCount: scoreWordCount,
   scoreCodeBlocks: scoreCodeBlocks,
   scoreMultiFileIndicators: scoreMultiFileIndicators,

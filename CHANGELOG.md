@@ -1,5 +1,123 @@
 # Changelog
 
+## v3.2.0 — Quota awareness, statusline, context bloat, agent teams, git hooks, auto-benchmark
+
+Eight new features driven by community research (Reddit r/ClaudeAI / r/ClaudeCode,
+GitHub issues, dev blogs). Every addition is config-gated and defaults
+conservatively — `enabled: false` reverts to v3.1.1 behavior per feature.
+
+### Quota-aware routing (R1)
+
+The plugin now tracks weekly + 5-hour rolling usage windows from
+`logs/usage.jsonl` and automatically downgrades opus → sonnet when weekly
+opus usage crosses a threshold. Eliminates "Opus weekly quota exhausted"
+mid-task surprises that hit the [r/ClaudeAI community hard in March-April 2026](https://www.productcompass.pm/p/stop-hitting-claude-code-limits).
+
+* New module: `scripts/lib/quota-tracker.js`
+* New slash command: `/quota`
+* Config: `quotaAware.{enabled, opusDowngradeThreshold, opusFallbackModel, respectBurstLimit}`
+* Routing pipeline: quota downgrade applied LAST so it can't be reverted by
+  keyword-influence override on architecture/security keywords.
+
+### Custom statusline (R2)
+
+The plugin ships a Claude Code statusline script that displays the current
+routed model, context %, weekly quota %, and estimated session cost. Wires
+into `~/.claude/settings.json` via `statusLine.command`.
+
+* New script: `scripts/statusline.js`
+* New slash command: `/statusline`
+* Config: `statusline.{format, includeCost, includeIcon}`
+* Three formats: `compact` (default) / `minimal` / `verbose`
+
+Example output: `🟢 sonnet │ ctx 23% │ wk 12% │ $0.42`
+
+### Context bloat detector (R3 + R9)
+
+Hook into `PreToolUse` for Read|Bash. Tracks every tool call into
+`logs/tool-history.jsonl` (capped 200) and flags repeated reads of the same
+file as token waste. Addresses the [#1 Claude Code cost driver](https://buildtolaunch.substack.com/p/claude-code-token-optimization):
+"every file read adds full content to context permanently."
+
+* New hook: `scripts/context-bloat-detect.js` (PreToolUse, matcher `Read|Bash`)
+* New slash command: `/context-audit` — heatmap of token-cost-by-file
+* Helper module: `scripts/lib/context-audit.js`
+* Config: `contextBloat.{enabled, duplicateThreshold, windowMinutes}`
+
+### Git commit/push hook (R5)
+
+Closes [GitHub issue #4834](https://github.com/anthropics/claude-code/issues/4834)
+("Add Hooks for Git Workflow Automation"). Pre-tool hook on `Bash` matches
+`git commit` and `git push` commands:
+
+* On commit: reads `git diff --cached --shortstat`, recommends model based on
+  diff size (small → haiku, moderate → sonnet, large → opus)
+* On push: warns when `--force` is used against main/master
+* Tracks stats in `logs/git-router-stats.jsonl`
+
+* New hook: `scripts/git-commit-hook.js` (PreToolUse, matcher `Bash`)
+* New slash command: `/git-router-stats`
+* Config: `gitHooks.{enabled, autoMessageModel, warnForcePush, trackStats, diffThresholds}`
+
+### Agent Teams role detection (R7)
+
+Claude Code 2.1+ ships [Agent Teams](https://code.claude.com/docs/en/agent-teams)
+(multi-agent orchestrator). The plugin detects "team lead" vs "teammate" role
+phrasing and routes accordingly: lead → opus + high effort, teammate → sonnet +
+medium effort.
+
+* Extends `scripts/lib/scoring.js` with `detectAgentTeamsRole()`
+* Recognizes EN/HU/DE phrasing
+* Wired into the main routing pipeline (overrides keyword-based model assignment)
+
+### Auto-benchmark (R8)
+
+Canonical 10-prompt routing benchmark with drift detection against the
+previous run. Designed for weekly cron runs via `/loop` or
+`scheduled-tasks` MCP.
+
+* New script: `scripts/auto-benchmark.js` (`--quiet|--json|--no-append`)
+* New slash command: `/auto-benchmark`
+* History stored in `logs/benchmarks.jsonl` (capped 50)
+* Drift > 1 score point on any case raises a warning
+
+Cases cover all three tiers (haiku/sonnet/opus), Hungarian morphology, and
+the architecture/security/planning opus categories.
+
+### Claude Code 2.1+ feature awareness (R13)
+
+New module `scripts/lib/cc-version.js` detects the host Claude Code version
+via `claude --version` (or env var / settings override) and infers feature
+flags: `nativeBinary`, `persistentModelSelection`, `inlineThinkingProgress`,
+`fastMcpStartup`, `resumeRewrite`. Hook output is included in routing
+decisions so downstream tooling can adapt.
+
+* Config: `claudeCodeFeatures.{detectVersion, useInlineThinkingProgress, trustFastMcpStartup}`
+* Cached for the lifetime of the Node process
+
+### New hooks
+
+`hooks/hooks.json` adds two `PreToolUse` entries:
+* `Read|Bash` matcher → context-bloat-detect.js
+* `Bash` matcher → git-commit-hook.js
+
+Both are <8s timeout and emit `systemMessage` for advisory output (never block).
+
+### New files
+
+* `scripts/lib/quota-tracker.js`, `scripts/lib/cc-version.js`, `scripts/lib/context-audit.js`
+* `scripts/statusline.js`, `scripts/context-bloat-detect.js`, `scripts/git-commit-hook.js`, `scripts/auto-benchmark.js`
+* `commands/statusline.md`, `commands/quota.md`, `commands/context-audit.md`, `commands/git-router-stats.md`, `commands/auto-benchmark.md`
+
+### Backward compatibility
+
+Every new feature has a config block with `enabled: true` default. Setting
+any to `enabled: false` reverts to v3.1.1 behavior for that feature.
+
+Tests: 79/79 still pass; preflight green.
+
+Version sync 3.1.1 → 3.2.0.
+
 ## v3.1.1 — Karpathy skills auto-sync on SessionStart
 
 Closes the gap where karpathy-guidelines was only installed when the user
