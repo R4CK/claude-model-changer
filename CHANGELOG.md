@@ -1,5 +1,33 @@
 # Changelog
 
+## v3.2.3 — Comprehensive README refresh
+
+A documentation-only release that brings the README up to date with everything
+shipped between v3.0.0 and v3.2.2. The pre-v3.2.3 README still showed
+`v3.0.0` badge, listed only 4 hooks, 28 categories, and the old Claude 3.5
+Haiku pricing — none of the v3.x features were documented.
+
+Changes (README.md):
+- Badge updated v3.0.0 → v3.2.3
+- New "What's new in v3.2.x" version-by-version tour section
+- Cost model updated to Claude 4.x pricing (Haiku 4.5 = $1/$5)
+- Context window table now shows Opus 4.7 1M option
+- Routing pipeline diagram covers all v3.2.x stages
+- Commands table 11 → 17 entries, grouped by purpose
+- Hooks table 4 → 5 (PreToolUse added)
+- v3.x feature config blocks reference added
+- Skill trigger rules table added
+- Repository layout updated with all new scripts
+- 4 new FAQ entries (quota, context bloat, statusline, karpathy upstream)
+- Comparison table extended with quota-aware / context-bloat / statusline /
+  git hook / skills-aware columns
+
+No code changes. Files-only release.
+
+Tests: 79/79 still pass; preflight green.
+
+Version sync 3.2.2 → 3.2.3.
+
 ## v3.2.2 — Update flow documentation + path-source helper
 
 A documentation-and-helper release that fills a gap from earlier versions:
