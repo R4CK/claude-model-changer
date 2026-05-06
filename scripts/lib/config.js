@@ -70,6 +70,21 @@ function loadConfig(cwd) {
     }
   } catch (err) { /* ignore - learned config is optional */ }
 
+  // v3.3.0: Active profile overlay (R43). Profiles are global "personal vs
+  // work" toggles stored under ~/.claude/profiles/<name>.json. They sit
+  // BETWEEN learned-keywords and the per-project override, so:
+  //   base \u2192 learned \u2192 profile \u2192 per-project
+  // Per-project remains the strongest scope (most specific wins).
+  try {
+    var profileMgr = require("./profile-manager");
+    var applied = profileMgr.applyProfile(baseConfig, cwd);
+    if (applied && applied.profile) {
+      baseConfig = applied.config;
+      // Annotate so /stats / statusline can show which profile is active
+      baseConfig._activeProfile = applied.profile;
+    }
+  } catch (err) { /* profile manager is optional */ }
+
   if (cwd) {
     var projectConfigPath = path.join(cwd, ".claude", "model-routing.json");
     try {

@@ -521,6 +521,33 @@
     "useInlineThinkingProgress": true,
     "trustFastMcpStartup": true
   },
+  "fallbackLearning": {
+    "enabled": true,
+    "windowDays": 30,
+    "rateThreshold": 0.3,
+    "minSamples": 5,
+    "boostPoints": 2
+  },
+  "tokenPreview": {
+    "enabled": true,
+    "avgResponseTokens": 1500
+  },
+  "proactiveCompact": {
+    "enabled": true,
+    "topicShiftThresholdPercent": 50
+  },
+  "undo": {
+    "enabled": true,
+    "maxAgeSec": 600
+  },
+  "profiles": {
+    "enabled": true,
+    "autoSwitchByCwd": true
+  },
+  "weeklyDigest": {
+    "enabled": true,
+    "writeToLogs": true
+  },
   "memoryIntegration": {
     "enabled": true,
     "influenceEffort": true

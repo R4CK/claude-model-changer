@@ -39,6 +39,9 @@ var memory = require("./lib/memory");
 var quotaTracker = require("./lib/quota-tracker");
 var ccVersion = require("./lib/cc-version");
 var contextAudit = require("./lib/context-audit");
+var fallbackLearn = require("./lib/fallback-learn");
+var lastRouting = require("./lib/last-routing");
+var profileManager = require("./lib/profile-manager");
 
 // Startup cleanup: rotate debug log + trim all JSONL logs
 io.rotateDebugLog();
@@ -216,6 +219,28 @@ function analyzeComplexity(prompt, config, cwd, sessionId, hookInput) {
   var multiFileScore = scoring.scoreMultiFileIndicators(promptLower, config);
   var structuralScore = scoring.scoreStructuralComplexity(prompt);
   var taskType = scoring.classifyQuestionVsTask(promptLower);
+
+  // v3.3.0 (R30): Fallback learning boost. If a category has an elevated
+  // fallback rate (haiku-worker emitting [FALLBACK:sonnet] frequently),
+  // bump the keyword score so the next routing skips ahead. Reads from
+  // logs/fallback-learn.json (cached, recomputed every 6h).
+  // Source: keyword category key (from scoreKeywords) — we look it up in
+  // the config to get the matched category key, not just label.
+  var fallbackBoostApplied = 0;
+  try {
+    if (keywordResult.matchedModel !== "none" && config && config.models) {
+      var md = config.models[keywordResult.matchedModel];
+      if (md && md.categories) {
+        var catKeys = Object.keys(md.categories);
+        for (var cki = 0; cki < catKeys.length; cki++) {
+          if (md.categories[catKeys[cki]].label === keywordResult.matchedCategory) {
+            fallbackBoostApplied = fallbackLearn.applyBoost(catKeys[cki], keywordResult, config);
+            break;
+          }
+        }
+      }
+    }
+  } catch (e) { /* never break routing */ }
 
   var projectTypes = session.detectProjectType(cwd);
   var contextBoost = session.getContextBoost(promptLower, projectTypes, config);
@@ -477,6 +502,7 @@ function analyzeComplexity(prompt, config, cwd, sessionId, hookInput) {
     quotaState: quotaState,  // v3.2.0: full quota snapshot or null
     quotaDowngrade: quotaDowngrade,  // v3.2.0: { downgrade, toModel, reason } or null
     ccVersion: ccVer,  // v3.2.0: { version, features, detectedFrom } or null
+    fallbackBoostApplied: fallbackBoostApplied,  // v3.3.0 (R30)
     effort: effortDecision,  // v2.7.0: { level: "low"|"medium"|"high", reason: "..." } or null
     // T2.1 (v2.5.0): detailed internals exposed for --explain mode
     explain: {
@@ -597,6 +623,59 @@ process.stdin.on("end", function() {
         var audit = contextAudit.buildAudit({ windowMinutes: 60 });
         return JSON.stringify(audit, null, 2);
       },
+      "--undo": function() {
+        // v3.3.0 (R33): /undo last routing
+        var cfg = configModule.loadConfig(cwd);
+        var payload = lastRouting.buildUndoPayload(cfg);
+        if (payload.ok) {
+          // Auto-rate the previous decision as quality 1 (poor)
+          try {
+            var qFs = require("fs");
+            var qPath = require("path").join(__dirname, "..", "logs", "quality.jsonl");
+            qFs.appendFileSync(qPath, JSON.stringify({
+              timestamp: new Date().toISOString(),
+              sessionId: sessionId,
+              model: payload.previousModel,
+              category: payload.category,
+              rating: 1,
+              source: "undo"
+            }) + "\n", "utf8");
+          } catch (e) {}
+        }
+        return JSON.stringify(payload, null, 2);
+      },
+      "--fallback-learn": function() {
+        // v3.3.0 (R30): full fallback-learn report (not cached)
+        var cfg = configModule.loadConfig(cwd);
+        return JSON.stringify(fallbackLearn.getReport(cfg), null, 2);
+      },
+      "--profile-list": function() {
+        // v3.3.0 (R43)
+        var profiles = profileManager.listProfiles();
+        var active = profileManager.getActiveProfileName();
+        return JSON.stringify({ profiles: profiles, active: active, count: profiles.length }, null, 2);
+      },
+      "--profile-current": function() {
+        // v3.3.0 (R43)
+        var byCwd = profileManager.getProfileForCwd(cwd);
+        var active = profileManager.getActiveProfileName();
+        return JSON.stringify({
+          activeViaCwd: byCwd,
+          activeGlobal: active,
+          resolved: byCwd || active || null,
+          cwd: cwd
+        }, null, 2);
+      },
+      "--weekly-digest": function() {
+        // v3.3.0 (R36)
+        try {
+          var digestMod = require("./weekly-digest");
+          var report = digestMod.buildDigest({});
+          return digestMod.formatMarkdown(report);
+        } catch (e) {
+          return "Weekly digest error: " + e.message;
+        }
+      },
       "--git-router-stats": function() {
         // v3.2.0: Git commit/push routing stats
         try {
@@ -662,6 +741,37 @@ process.stdin.on("end", function() {
       io.logOverride({ timestamp: new Date().toISOString(), recommendedModel: overrideMatch[1], chosenModel: overrideMatch[2], category: overrideMatch[3] });
       process.stdout.write("Override logged."); process.exit(0);
     }
+
+    // v3.3.0 (R43): --profile-switch <name>
+    var profileSwitchMatch = prompt.trim().match(/^--profile-switch\s+([a-z0-9_-]+)$/i);
+    if (profileSwitchMatch) {
+      var pn = profileSwitchMatch[1];
+      var ok = profileManager.setActiveProfile(pn);
+      process.stdout.write(ok ? "Active profile set to: " + pn : "Profile not found: " + pn + " (create at ~/.claude/profiles/" + pn + ".json first)");
+      process.exit(0);
+    }
+    if (prompt.trim() === "--profile-clear") {
+      profileManager.clearActiveProfile();
+      process.stdout.write("Active profile cleared (using base config).");
+      process.exit(0);
+    }
+
+    // v3.3.0 (R31): --whatif <op> <args...>
+    var whatifMatch = prompt.trim().match(/^--whatif\s+(.+)$/);
+    if (whatifMatch) {
+      try {
+        var whatifMod = require("./whatif");
+        // Split args on whitespace, but preserve quoted strings
+        var argParts = whatifMatch[1].match(/(?:[^\s"]+|"[^"]*")+/g) || [];
+        argParts = argParts.map(function(a) { return a.replace(/^"|"$/g, ""); });
+        var report = whatifMod.run(argParts, { cwd: cwd });
+        process.stdout.write(whatifMod.formatReport(report));
+      } catch (e) {
+        process.stdout.write("ERROR: " + e.message);
+      }
+      process.exit(0);
+    }
+
     var fallbackMatch = prompt.trim().match(/^--log-fallback\s+(\w+)\s+(\w+)\s+(.+)$/);
     if (fallbackMatch) {
       io.logFallback({ timestamp: new Date().toISOString(), fromModel: fallbackMatch[1], toModel: fallbackMatch[2], reason: fallbackMatch[3] });
@@ -790,8 +900,25 @@ process.stdin.on("end", function() {
         autoRouted: result.autoRoute, projectTypes: result.projectTypes, contextBoost: result.contextBoost,
         confidence: result.confidence.confidence, detectedLanguage: result.detectedLanguage,
         scores: result.scores, promptPreview: prompt.substring(0, 80).replace(/\n/g, " "),
+        prompt: prompt.substring(0, 500),  // v3.3.0 (R31): full(ish) prompt for /whatif replay
         effort: result.effort ? result.effort.level : null  // v2.7.0
       });
+    }
+
+    // v3.3.0 (R33): persist last routing for /undo
+    if (!isDryRun) {
+      try {
+        lastRouting.save({
+          timestamp: new Date().toISOString(),
+          sessionId: sessionId,
+          prompt: prompt.substring(0, 1000),
+          model: result.model,
+          level: result.level,
+          score: result.score,
+          category: result.matchedCategory,
+          effort: result.effort ? result.effort.level : null
+        });
+      } catch (e) { /* never block */ }
     }
 
     if (!isDryRun) monitors.recordApiCall(sessionId, result.model, config, session.loadSessionState, session.saveSessionState);
@@ -842,7 +969,36 @@ process.stdin.on("end", function() {
     else { lines.push("Matched category: \"" + result.matchedCategory + "\""); lines.push("Analysis: " + result.reason); }
 
     lines.push("Cost: " + costInfo);
+
+    // v3.3.0 (R35): Token estimator preview — per-prompt input/output token
+    // estimate + a per-model cost preview so the user can compare before
+    // submitting. Composes with /quota and /context-audit.
+    var tokensCfg = (config && config.tokenPreview) || {};
+    if (tokensCfg.enabled !== false) {
+      try {
+        var promptTokens = Math.round(prompt.length / 4); // rough heuristic
+        var avgOut = (config && config.tokenPreview && typeof config.tokenPreview.avgResponseTokens === "number") ? config.tokenPreview.avgResponseTokens : 1500;
+        var costForModel = function(m) {
+          var c = (config.costEstimates && config.costEstimates[m]) || {};
+          var inp = typeof c.inputPer1M === "number" ? c.inputPer1M : 0;
+          var out = typeof c.outputPer1M === "number" ? c.outputPer1M : 0;
+          return ((promptTokens * inp + avgOut * out) / 1e6).toFixed(4);
+        };
+        lines.push("Tokens preview: ~" + promptTokens + " in + ~" + avgOut + " out → $" + costForModel(result.model) + " at " + result.model + " (haiku $" + costForModel("haiku") + " · sonnet $" + costForModel("sonnet") + " · opus $" + costForModel("opus") + ")");
+      } catch (e) { /* never block output */ }
+    }
+
     lines.push("Confidence: " + result.confidence.confidence + "% (" + result.confidence.signals + " signals, " + result.confidence.agreement + " agreement)");
+
+    // v3.3.0 (R30): Surface fallback boost if it influenced this routing
+    if (result.fallbackBoostApplied && result.fallbackBoostApplied > 0) {
+      lines.push("Fallback boost: +" + result.fallbackBoostApplied + " (this category had high haiku→sonnet fallback rate; learned auto-bump)");
+    }
+
+    // v3.3.0 (R43): Surface active profile if any
+    if (config && config._activeProfile) {
+      lines.push("Profile: " + config._activeProfile);
+    }
 
     // v2.7.0: Emit Effort recommendation (orthogonal to model - reasoning budget)
     // v3.1.0: Also emit the suggested extended-thinking budget when configured.
@@ -892,6 +1048,15 @@ process.stdin.on("end", function() {
 
     if (contextUsage) {
       lines.push("Context window: ~" + contextUsage.percentage + "% estimated (" + Math.round(contextUsage.estimatedUsed / 1000) + "K/" + Math.round(contextUsage.maxTokens / 1000) + "K tokens)");
+
+      // v3.3.0 (R32): Proactive compact suggestion — combines context % +
+      // topic-shift detection. Composes with the existing isCompact{Suggest,
+      // Warn,Force} flags above; this is the unified user-facing line.
+      if (contextUsage.proactiveSuggestion && contextUsage.proactiveSuggestion.message) {
+        var ps = contextUsage.proactiveSuggestion;
+        var icon = ps.level === "force" ? "⛔" : (ps.level === "warn" ? "⚠" : "💡");
+        lines.push(icon + " " + ps.message);
+      }
       if (contextRec.adjusted) lines.push(contextRec.reason);
       if (contextRec.compactWarning) lines.push(contextRec.compactWarning);
     }
