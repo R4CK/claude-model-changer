@@ -1,5 +1,41 @@
 # Changelog
 
+## v3.3.1 — README refresh (covers v3.3.0 features)
+
+Documentation-only release. The v3.3.0 PR bumped the README badge but
+did not refresh the actual content with the 7 new features. v3.3.1 fixes
+that omission.
+
+### README changes
+
+- "What's new" table: added v3.3.0 row (7 community features) + v3.2.3 row
+- Pipeline diagram: added "Fallback boost (+0..N, v3.3.0 R30)" stage
+  before contextBoost layers; clarified parallel dispatch +2 skip
+  condition for Agent Teams lead
+- Commands table: 17 → 22 entries
+  - Diagnostic & analysis: added `/whatif`, `/weekly-digest`, `/fallback-learn`
+  - Routing & overrides: added `/undo`
+  - Configuration: added `/profile`
+- Configuration JSON example: added 6 new feature blocks
+  (`fallbackLearning`, `tokenPreview`, `proactiveCompact`, `undo`,
+   `profiles`, `weeklyDigest`)
+- New "Routing pipeline overlay order (v3.3.0)" subsection documenting
+  base → learned → profile → per-project overlay
+- Repository layout: added 5 new scripts (`whatif.js`, `weekly-digest.js`,
+  `lib/fallback-learn.js`, `lib/last-routing.js`, `lib/profile-manager.js`)
+- Getting Started example: added Tokens preview line to demo output
+- Comparison table: 6 new feature rows (auto-learn fallback, undo,
+  per-prompt cost, what-if, multi-profile, weekly digest)
+- FAQ: 5 new entries (undo, fallback learning, /whatif, profiles, digest)
+
+### No code changes
+
+Bundle (`dist/install.js`) rebuilt to embed the updated README.
+
+Tests: 79/79 still pass; preflight green.
+
+Version sync 3.3.0 → 3.3.1.
+
 ## v3.3.0 — Seven community-driven features (fallback learning, whatif, undo, token preview, weekly digest, profiles, proactive compact)
 
 A coordinated batch of features driven by community research and the v3.2.x

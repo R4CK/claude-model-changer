@@ -4,7 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D16-brightgreen)](package.json)
-[![Plugin Version](https://img.shields.io/badge/plugin-v3.3.0-blue)](.claude-plugin/plugin.json)
+[![Plugin Version](https://img.shields.io/badge/plugin-v3.3.1-blue)](.claude-plugin/plugin.json)
 [![CI](https://github.com/R4CK/claude-model-changer/actions/workflows/preflight.yml/badge.svg)](https://github.com/R4CK/claude-model-changer/actions/workflows/preflight.yml)
 [![Latest Release](https://img.shields.io/github/v/release/R4CK/claude-model-changer)](https://github.com/R4CK/claude-model-changer/releases/latest)
 
@@ -34,12 +34,14 @@ Real numbers from the included example log:
 
 ---
 
-## What's new in v3.2.x
+## What's new
 
-The plugin has matured significantly since v3.0.0. Quick tour of recent additions:
+The plugin has matured significantly since v3.0.0. Quick tour:
 
 | Version | Theme | Key features |
 |---|---|---|
+| **v3.3.0** | 7 community features | Fallback feedback loop (auto-learn from `[FALLBACK:sonnet]`), `/whatif` config simulator, proactive compact suggestion (context % + topic-shift), `/undo` last routing, token estimator preview, weekly digest (markdown narrative), multi-profile / multi-account switching |
+| **v3.2.3** | README refresh | Documentation only — covers v3.0.0 → v3.2.2 features |
 | **v3.2.2** | Update flow | `UPDATING.md` guide, `update-from-github.js` helper for path-source users |
 | **v3.2.1** | Harmony fixes | Skill trigger and Agent Teams overrides now actually win when they should; consolidated PreToolUse hook |
 | **v3.2.0** | 8 community features | Quota-aware routing, custom statusline, context bloat detector, git commit hooks, Agent Teams role detection, auto-benchmark, CC 2.1+ awareness, `/quota` /`/context-audit` /`/git-router-stats` /`/auto-benchmark` /`/statusline` commands |
@@ -142,6 +144,7 @@ After installing (see above) and restarting Claude Code:
 2. Plugin routes to **haiku** automatically:
    ```
    [Model Router] Complexity: SIMPLE (score 1/10) -> Recommended: haiku
+   Tokens preview: ~7 in + ~1500 out → $0.0075 at haiku (haiku $0.0075 · sonnet $0.0225 · opus $0.1126)
    Effort: low (trivial category 'typo_fix') | thinking budget: 0 tokens
    ```
 3. Try a harder one — `design a multi-tenant cache invalidation strategy`
@@ -200,13 +203,15 @@ Your prompt
 │  ├─ Score (1–10) from 5 sub-scores                   │
 │  ├─ Match category (30 total)                        │
 │  ├─ Detect language (EN/HU/DE) + Hungarian morphology│
+│  ├─ Fallback boost (+0..N, v3.3.0 R30)               │
+│  │   from logs/fallbacks.jsonl learning              │
 │  ├─ Confidence + borderline check                    │
 │  ├─ contextBoost layers:                             │
 │  │   • project type (+0..3)                          │
 │  │   • prompt history (+0..3)                        │
 │  │   • plan mode (+1 if active)                      │
 │  │   • MCP tool density (+0..3)                      │
-│  │   • parallel dispatch (+2)                        │
+│  │   • parallel dispatch (+2 unless Agent Teams lead)│
 │  └─ keywordInfluence override (configurable)         │
 └──────────────────────────────────────────────────────┘
     │
@@ -293,6 +298,9 @@ Edit `config/task-routing.json` to add your own categories or move keywords betw
 | `/context-audit` | Heatmap: what's eating your context window (v3.2.0) |
 | `/git-router-stats` | Git commit/push hook statistics (v3.2.0) |
 | `/metrics` | Prometheus text-format metrics export (v3.1.0) |
+| `/whatif <op>` | Simulate a config change against last 500 prompts (v3.3.0) |
+| `/weekly-digest` | Generate a narrative weekly cost + usage report (v3.3.0) |
+| `/fallback-learn` | Show categories auto-boosted from `[FALLBACK:sonnet]` events (v3.3.0) |
 
 ### Routing & overrides
 
@@ -305,6 +313,7 @@ Edit `config/task-routing.json` to add your own categories or move keywords betw
 | `/tune` | Get suggestions to improve your routing config |
 | `/learn` | Review LLM-fallback classification suggestions and keyword candidates |
 | `/statusline` | Manage the custom statusline integration (v3.2.0) |
+| `/undo` | Re-route the previous prompt to next-tier model + auto-rate as poor (v3.3.0) |
 
 ### Configuration
 
@@ -312,6 +321,7 @@ Edit `config/task-routing.json` to add your own categories or move keywords betw
 |---------|-------------|
 | `/export-config [path]` | Export current config as a shareable bundle |
 | `/import-config <path>` | Import a config bundle |
+| `/profile [list\|current\|switch <name>\|clear]` | Manage routing profiles (multi-account / multi-context) (v3.3.0) |
 
 ### Manual override (any prompt)
 
@@ -394,12 +404,30 @@ All new behavior is config-gated. Set any to `enabled: false` to revert to legac
 
   "planMode": { "enabled": true, "scoreBoost": 1, "detectFromKeywords": true, "keywords": [...] },
 
+  "fallbackLearning": { "enabled": true, "windowDays": 30, "rateThreshold": 0.3, "minSamples": 5, "boostPoints": 2 },
+  "tokenPreview": { "enabled": true, "avgResponseTokens": 1500 },
+  "proactiveCompact": { "enabled": true, "topicShiftThresholdPercent": 50 },
+  "undo": { "enabled": true, "maxAgeSec": 600 },
+  "profiles": { "enabled": true, "autoSwitchByCwd": true },
+  "weeklyDigest": { "enabled": true, "writeToLogs": true },
+
   "effort": {
     "enabled": true,
     "thinkingBudgets": { "low": 0, "medium": 5000, "high": 16000 }
   }
 }
 ```
+
+### Routing pipeline overlay order (v3.3.0)
+
+```
+base task-routing.json
+  → learned-keywords.json (auto-learned vocabulary, gitignored)
+  → R43 profile (~/.claude/profiles/<active>.json)            [v3.3.0]
+  → per-project .claude/model-routing.json                     ← strongest, project-specific wins
+```
+
+Profiles are global "personal vs work" overlays. Per-project rules still trump them — that's by design for project specificity.
 
 ### Auto-mode tuning
 
@@ -490,6 +518,8 @@ claude-model-changer/
 │   ├── statusline.js            # Custom Claude Code statusline (v3.2.0)
 │   ├── auto-benchmark.js        # Routing benchmark suite (v3.2.0)
 │   ├── export-prometheus.js     # Telemetry exporter (v3.1.0)
+│   ├── whatif.js                # Config-change simulator (v3.3.0)
+│   ├── weekly-digest.js         # Markdown weekly cost report (v3.3.0)
 │   ├── karpathy-session-sync.js # Throttled karpathy sync (v3.1.1)
 │   ├── sync-karpathy-skills.js  # Karpathy upstream pull
 │   ├── update-from-github.js    # Plugin self-update for path-source users (v3.2.2)
@@ -507,6 +537,9 @@ claude-model-changer/
 │       ├── context-audit.js     # Bloat audit helper (v3.2.0)
 │       ├── memory.js            # Auto-memory MEMORY.md reader (v3.1.0)
 │       ├── atomic-io.js         # Concurrency-safe state I/O (v3.0.0)
+│       ├── fallback-learn.js    # Auto-boost from [FALLBACK:sonnet] events (v3.3.0)
+│       ├── last-routing.js      # Persisted last decision for /undo (v3.3.0)
+│       ├── profile-manager.js   # Multi-profile overlay (v3.3.0)
 │       ├── config.js, session.js, stats.js, io.js, health.js, etc.
 ├── skills/
 │   └── model-router/            # Skill bundle exposed via SKILL.md
@@ -563,6 +596,21 @@ rm ~/.claude/plugins/cache/<owner>/claude-model-changer/<version>/logs/*.jsonl
 
 **Q: Will this work alongside other Claude Code plugins?**
 Yes. The plugin uses standard hook mechanisms and doesn't touch settings it doesn't own. Multiple plugins can contribute hooks to the same event.
+
+**Q: Routing was wrong — can I fix it after the fact? (v3.3.0)**
+Yes. Run `/undo`. The previous prompt is re-routed to the next-tier model (haiku → sonnet → opus), and the original decision is auto-rated as quality 1 (poor) so adaptive weights learn from your correction. There's a 10-minute staleness limit (configurable via `undo.maxAgeSec`).
+
+**Q: Does the plugin learn from haiku-worker fallbacks? (v3.3.0)**
+Yes. When a haiku-worker emits `[FALLBACK:sonnet]` (signaling it can't handle the task), the plugin logs it. After enough samples, it auto-boosts the keyword score for that category so future prompts skip ahead. Run `/fallback-learn` to see what's been learned. This is *machine* feedback complementing the *human* feedback from `/rate`.
+
+**Q: I want to test a config change before applying it. (v3.3.0)**
+Run `/whatif move <keyword> <fromModel> <toModel>` (or `threshold`, `add-keyword`, `disable`, `enable`). The simulator replays the last 500 prompts under your hypothetical change and reports cost delta + distribution diff. **Read-only** — never modifies actual config.
+
+**Q: Can I have separate configs for personal vs work use? (v3.3.0)**
+Yes. Profiles. Create `~/.claude/profiles/work.json` with overrides like `{ "planLimits": { "weeklyOpus": 100 } }`. Switch via `/profile switch work` or auto-switch by cwd via `~/.claude/profiles/.project-map.json`. Per-project `.claude/model-routing.json` still wins for project-specific rules — profiles are a layer below that.
+
+**Q: Can I get a weekly cost summary? (v3.3.0)**
+Yes. Run `/weekly-digest` or schedule it: `/loop 7d node "${CLAUDE_PLUGIN_ROOT}/scripts/weekly-digest.js"`. Output is markdown comparing this week to last week, with model distribution, top categories, anomalies, and git activity.
 
 **Q: How do I uninstall?**
 ```bash
@@ -661,6 +709,12 @@ Every PR runs the [Preflight workflow](.github/workflows/preflight.yml):
 | Statusline integration | Yes (v3.2.0) | N/A | N/A | N/A |
 | Git commit hook | Yes (v3.2.0) | N/A | N/A | N/A |
 | Skills/Agent Teams aware | Yes (v3.1.0+) | N/A | N/A | N/A |
+| Auto-learn from fallback events | Yes (v3.3.0) | No | No | No |
+| Undo last routing | Yes (v3.3.0) | N/A | N/A | N/A |
+| Per-prompt token cost preview | Yes (v3.3.0) | No | No | No |
+| What-if config simulator | Yes (v3.3.0) | No | No | No |
+| Multi-account / profile switching | Yes (v3.3.0) | Manual | N/A | N/A |
+| Weekly cost digest | Yes (v3.3.0) | None | None | None |
 
 ---
 
