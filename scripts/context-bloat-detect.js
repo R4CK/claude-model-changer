@@ -2,6 +2,15 @@
 /**
  * context-bloat-detect.js — PreToolUse hook for Read|Bash.
  *
+ * STATUS (v3.2.1+): standalone-only. Retained for direct invocation and
+ * testing; **NOT** wired into hooks.json since v3.2.1. Production calls
+ * this logic via `pre-tool-router.js` which combines this detector with
+ * `git-commit-hook.js` into a single hook to halve process spawns. See
+ * the v3.2.1 CHANGELOG for the harmonization rationale.
+ *
+ * To re-enable as a separate hook (not recommended), add an entry to
+ * `hooks/hooks.json` with matcher `Read|Bash` pointing here.
+ *
  * Tracks every Read tool call and Bash command (cat/head/tail/grep style)
  * to detect:
  *   - Repeated reads of the same file (duplicate token waste)

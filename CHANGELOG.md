@@ -1,5 +1,79 @@
 # Changelog
 
+## v3.3.2 — Patch release: version consistency, Stop hook architecture, statusline docs
+
+A small but meaningful housekeeping release with three improvements
+discovered during a post-v3.3.1 audit.
+
+### Bug fixes
+
+**Stop hook stdout never reached the assistant turn (architectural fix)**
+
+`scripts/enforce-stats.js` was emitting plain text to stdout (`REMINDER:
+Append these stats lines...`), but Claude Code's Stop hook stdout is
+**not injected into the assistant response that just ended** — Claude
+already finished its turn. This is by design.
+
+Pre-v3.3.2 behavior: stats reminder only landed in `logs/hook-debug.log`,
+never in the conversation. The user-facing stats footer was thus a
+"best effort" on the UserPromptSubmit hook output, which Claude usually
+but not always followed.
+
+v3.3.2 changes the Stop hook to emit `hookSpecificOutput.additionalContext`
+JSON. Claude Code's hook spec specifies this field is fed back into the
+**next** user turn as additional context — so the stats appear at the
+start of the next response instead of disappearing.
+
+For real-time stats display, **use the statusline** (the only mechanism
+Claude Code provides for always-visible per-tick info). Wire it via:
+
+```json
+"statusLine": {
+  "type": "command",
+  "command": "node \"<plugin-cache>/scripts/statusline.js\""
+}
+```
+
+A header comment was added to `enforce-stats.js` documenting this
+architectural reality.
+
+### Documentation
+
+**Standalone PreToolUse scripts now flag their status**
+
+`scripts/context-bloat-detect.js` and `scripts/git-commit-hook.js` were
+consolidated into `pre-tool-router.js` in v3.2.1, but the standalone
+scripts were retained for direct invocation / testing. v3.3.2 adds an
+explicit "STATUS (v3.2.1+): standalone-only" header comment to each so
+new contributors don't wire them into hooks.json by mistake.
+
+**README slash commands count: 17 → 27**
+
+The Repository layout section had `# 17 slash commands` left over from
+v3.2.3. Actual count is now 27 (v3.3.0 added five new commands: /undo,
+/whatif, /profile, /weekly-digest, /fallback-learn). Fixed.
+
+### Version consistency sweep
+
+Pre-v3.3.2 had stale version strings in:
+- Local cache `plugin.json`: 3.2.3 (should be 3.3.1+)
+- Local marketplace `plugin.json`: 3.2.3 (should be 3.3.1+)
+- Marketplace.json plugin entry: still 3.2.1 (mirrored "v3.2.1" in description)
+- Marketplace.json plugin description: outdated feature list ("28 categories, 4 hooks")
+
+All bumped to 3.3.2. Marketplace description rewritten to reflect the
+current feature set (30 categories, 5 hooks, 27 commands, all v3.x feats).
+
+### No code-behavior changes
+
+Routing logic, scoring, all v3.3.0 features unchanged. Stats footer
+mechanism shifted from soft-instruction-on-routing to next-turn-context
+via Stop hook JSON output — strictly an improvement, no regression.
+
+Tests: 79/79 still pass; preflight green.
+
+Version sync 3.3.1 → 3.3.2.
+
 ## v3.3.1 — README refresh (covers v3.3.0 features)
 
 Documentation-only release. The v3.3.0 PR bumped the README badge but
