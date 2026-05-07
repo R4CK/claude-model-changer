@@ -941,18 +941,27 @@ process.stdin.on("end", function() {
     if (!isDryRun) writeStatusFile(result, contextUsage, budget, anomalies, apiLimits, updatedState);
 
     // ---- Build output ----
+    // v3.4.2: Output structure changed. The stats block was at the TOP of
+    // the output pre-v3.4.2, but Claude often forgot to append it after a
+    // long response (the "MANDATORY STATS DISPLAY" instruction was buried
+    // beneath the routing analysis). Moving it to the END so it's the LAST
+    // thing Claude reads before composing the reply \u2014 empirically much more
+    // reliable in 2.1.x. We also wrap it in a <system-reminder>-style block
+    // and use clearer "Append at end of your response" phrasing.
     var lines = [];
 
     var sessionSummaryLines = sessionUtils.getSessionSummaryLines(updatedState);
+    var statsTail = null;
     if (sessionSummaryLines && sessionSummaryLines.length > 0) {
-      lines.push("========== MANDATORY STATS DISPLAY ==========");
-      lines.push("COPY THESE EXACT LINES AS THE LAST LINES OF YOUR RESPONSE:");
+      var sl = ["<system-reminder>",
+                "After completing the user's request, append these exact lines as the last lines of your response (no other text after them):",
+                ""];
       var emojis = ["\ud83d\udcca", "\ud83d\udd0b", "\ud83d\udcc8", "\ud83d\udcca"];
       for (var si = 0; si < sessionSummaryLines.length; si++) {
-        lines.push((emojis[si] || "\ud83d\udcc8") + " " + sessionSummaryLines[si]);
+        sl.push((emojis[si] || "\ud83d\udcc8") + " " + sessionSummaryLines[si]);
       }
-      lines.push("==============================================");
-      lines.push("");
+      sl.push("</system-reminder>");
+      statsTail = sl.join("\n");
     }
 
     // H4: Warn user visibly if config is corrupt
@@ -1234,6 +1243,14 @@ process.stdin.on("end", function() {
     if (config && config.promptHints && config.promptHints.enabled && config.promptHints.hints) {
       var hint = config.promptHints.hints[result.model];
       if (hint) { lines.push(""); lines.push(hint); }
+    }
+
+    // v3.4.2: append the stats <system-reminder> block at the END so it's
+    // the last thing Claude reads. Claude Code 2.1.x respects system-
+    // reminder blocks consistently as imperative instructions.
+    if (statsTail) {
+      lines.push("");
+      lines.push(statsTail);
     }
 
     process.stdout.write(lines.join("\n"));
