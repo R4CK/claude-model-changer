@@ -2,6 +2,15 @@
 /**
  * git-commit-hook.js — PreToolUse hook for `git commit`/`git push` calls.
  *
+ * STATUS (v3.2.1+): standalone-only. Retained for direct invocation and
+ * testing; **NOT** wired into hooks.json since v3.2.1. Production calls
+ * this logic via `pre-tool-router.js` which combines this detector with
+ * `context-bloat-detect.js` into a single hook to halve process spawns.
+ * See the v3.2.1 CHANGELOG for the harmonization rationale.
+ *
+ * To re-enable as a separate hook (not recommended), add an entry to
+ * `hooks/hooks.json` with matcher `Bash` pointing here.
+ *
  * Two purposes:
  *   1. Routing hint: large diffs imply complex commits → recommend bumping to
  *      sonnet for the message generation. Tiny diffs → haiku is fine.

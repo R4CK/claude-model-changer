@@ -4,7 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D16-brightgreen)](package.json)
-[![Plugin Version](https://img.shields.io/badge/plugin-v3.3.1-blue)](.claude-plugin/plugin.json)
+[![Plugin Version](https://img.shields.io/badge/plugin-v3.3.2-blue)](.claude-plugin/plugin.json)
 [![CI](https://github.com/R4CK/claude-model-changer/actions/workflows/preflight.yml/badge.svg)](https://github.com/R4CK/claude-model-changer/actions/workflows/preflight.yml)
 [![Latest Release](https://img.shields.io/github/v/release/R4CK/claude-model-changer)](https://github.com/R4CK/claude-model-changer/releases/latest)
 
@@ -501,7 +501,7 @@ claude-model-changer/
 │   ├── haiku-worker.md          # Subagent for SIMPLE tasks
 │   ├── sonnet-worker.md         # Subagent for MEDIUM tasks
 │   └── opus-worker.md           # Subagent for COMPLEX tasks
-├── commands/                    # 17 slash commands
+├── commands/                    # 27 slash commands
 ├── config/
 │   ├── task-routing.json        # 30 categories, weights, thresholds, all v3.x feature blocks
 │   └── patterns.json            # User-saved prompt → model mappings
