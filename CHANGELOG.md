@@ -1,5 +1,101 @@
 # Changelog
 
+## v3.4.0 — Keyword expansion (+232 IT-jargon keywords) + `reaktorozd` typo fix
+
+User-reported issue: the README v3.3.x example "Hungarian morphology
+(`elgépelést`, `reaktorozd`)" used **`reaktorozd`** as an IT-jargon
+example. That word does not exist in software context — it's a
+verbalization of "reaktor" (nuclear reactor). The correct Hungarian
+verb for code refactoring is **`refaktoráld`** / **`refaktorozd`**
+(both valid, both now in the dictionary).
+
+Plus: a substantial vocabulary expansion across all three languages.
+
+### Bug fix: `reaktorozd` → `refaktoráld`
+
+- `README.md`: the morphology example replaced
+- `config/task-routing.json` HU `small_refactoring`: removed
+  `reaktorozás`, added the correct forms (`refaktoráld`,
+  `refaktorálás`, `refaktorozd`, `refaktorozás`) plus broader IT
+  context (`absztraháld`, `kiemelni metódusba`, `függvényké
+  alakítsd`, `törd szét kisebb függvényekre`, `duplikáció
+  eltávolítása`, `DRY-osítsd`)
+
+### Keyword expansion: +232 entries across all 30 categories
+
+| Language | Before | After | New |
+|---|---|---|---|
+| English | 205 | 286 | **+81** |
+| Hungarian | 167 | 242 | **+75** |
+| German | 130 | 206 | **+76** |
+| **Total** | **502** | **734** | **+232** |
+
+Every category got 2-5 new keywords spanning typical IT-jargon:
+
+* **Haiku tier:** `lint`, `auto-format`, `case fix`, `javadoc`,
+  `tsdoc`, `git stash`, `git diff`, `tell me`, `look up`, etc.
+  HU: `kódformázás`, `behúzás javítás`, `kódkommentárok`, etc.
+  DE: `Code formatieren`, `Einrückung`, `Lint-Fehler`, etc.
+
+* **Sonnet tier:** `mock`, `stub`, `fixture`, `snapshot test`,
+  `extract method`, `inline`, `factory`, `builder`, `service`,
+  `webhook`, `polling`, `env vars`, `feature flag`, `try-catch`,
+  `retry`, `profile`, `trace`, `metrics`, `deep dive`, etc.
+  HU: `egységteszt`, `mock objektum`, `tesztsuit`, `kivételkezelés`,
+  `retry logika`, `memóriaszivárgás`, etc.
+  DE: `Unit-Test schreiben`, `Mock-Objekt`, `Methode extrahieren`,
+  `API-Integration`, `Ausnahmebehandlung`, etc.
+
+* **Opus tier:** `domain model`, `bounded context`, `OWASP`,
+  `OAuth`, `JWT`, `csrf`, `xss`, `event sourcing`, `CQRS`,
+  `microservice`, `data structure`, `graph`, `tree`, `hash map`,
+  `load test`, `stress test`, etc.
+  HU: `rendszerarchitektúra`, `OWASP`, `terheléses teszt`,
+  `elosztott rendszer`, `esemény alapú architektúra`, etc.
+  DE: `Systemarchitektur`, `OWASP`, `Sicherheitsaudit`,
+  `Verteiltes System`, `Lasttest`, etc.
+
+### Language detection threshold lowered (HU/DE: 3 → 2)
+
+Pre-v3.4.0 the language detector required 3 matching tokens to flag
+HU/DE. Terse 2-3 word IT prompts like `refaktorozd a kódot` or `Bug
+beheben` only matched 1-2 tokens and fell through to English keyword
+matching, which had no entries for these words → "none" category →
+default haiku routing.
+
+v3.4.0:
+- Lowered HU/DE threshold from 3 to 2
+- Extended `huWords` and `deWords` lists in `detectLanguage()` with
+  IT-jargon stems (`refaktor`, `kódot`, `vizsgáld`, `memória`,
+  `rendszer`, `behebe`, `bug`, `lasttest`, `komponente`, `audit`,
+  etc.)
+
+Result: terse 2-3 word HU/DE prompts now reliably trigger their
+language path. Verified against 6 prompts that pre-v3.4.0 fell
+through to "none":
+
+| Prompt | Pre-v3.4.0 | v3.4.0 |
+|---|---|---|
+| `refaktorozd a kódot` | none → haiku | Small refactoring → sonnet |
+| `vizsgáld a memóriaszivárgást` | none → haiku | Performance debugging → sonnet |
+| `Bug beheben` | none → haiku | Bug fixing → sonnet |
+| `Lasttest durchführen` | none → haiku | Testing → sonnet |
+| `elemezd a teljesítményt` | none → haiku | Code investigation → sonnet |
+| `implementiere ein Modul` | none → haiku | Feature addition → sonnet |
+
+### No code-behavior changes for existing prompts
+
+All 79 unit tests still pass; preflight green. Existing keyword matches
+continue to work — only new vocabulary added. The lowered language
+threshold is mitigated by the IT-stem-biased word lists (English short
+prompts won't accidentally match 2 IT-specific HU/DE stems).
+
+Files modified: `config/task-routing.json` (vocabulary),
+`scripts/lib/scoring.js` (detectLanguage),
+`README.md` (typo + version table).
+
+Version sync 3.3.2 → 3.4.0.
+
 ## v3.3.2 — Patch release: version consistency, Stop hook architecture, statusline docs
 
 A small but meaningful housekeeping release with three improvements

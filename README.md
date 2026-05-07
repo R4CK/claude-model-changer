@@ -4,7 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D16-brightgreen)](package.json)
-[![Plugin Version](https://img.shields.io/badge/plugin-v3.3.2-blue)](.claude-plugin/plugin.json)
+[![Plugin Version](https://img.shields.io/badge/plugin-v3.4.0-blue)](.claude-plugin/plugin.json)
 [![CI](https://github.com/R4CK/claude-model-changer/actions/workflows/preflight.yml/badge.svg)](https://github.com/R4CK/claude-model-changer/actions/workflows/preflight.yml)
 [![Latest Release](https://img.shields.io/github/v/release/R4CK/claude-model-changer)](https://github.com/R4CK/claude-model-changer/releases/latest)
 
@@ -40,6 +40,7 @@ The plugin has matured significantly since v3.0.0. Quick tour:
 
 | Version | Theme | Key features |
 |---|---|---|
+| **v3.4.0** | Keyword expansion + bugfix | Vocabulary expanded by **+232 IT-jargon keywords** across all 30 categories (EN +81, HU +75, DE +76). Fix for `reaktorozd` → `refaktoráld` (the original word was nuclear-reactor jargon, not software). HU/DE language detection threshold lowered from 3 → 2 with stem-based heuristics so terse 2-3 word prompts (`refaktorozd a kódot`, `Bug beheben`) reliably trigger their language path. |
 | **v3.3.0** | 7 community features | Fallback feedback loop (auto-learn from `[FALLBACK:sonnet]`), `/whatif` config simulator, proactive compact suggestion (context % + topic-shift), `/undo` last routing, token estimator preview, weekly digest (markdown narrative), multi-profile / multi-account switching |
 | **v3.2.3** | README refresh | Documentation only — covers v3.0.0 → v3.2.2 features |
 | **v3.2.2** | Update flow | `UPDATING.md` guide, `update-from-github.js` helper for path-source users |
@@ -268,7 +269,7 @@ Predefined buckets, each with example keywords:
 - **Sonnet (12):** bug fixing, configuration, testing, code review, small refactoring, component creation, integration, error handling, documentation, feature addition, performance debugging, code investigation
 - **Opus (9):** architecture, large refactoring, multi-file work, algorithms, security, performance audit, planning, system design, tech debt
 
-Multi-language (EN/HU/DE) with **Hungarian morphology** support for proper handling of inflected forms (`elgépelést`, `reaktorozd`, etc.).
+Multi-language (EN/HU/DE) with **Hungarian morphology** support for proper handling of inflected forms (`elgépelést`, `refaktoráld`, etc.).
 
 Edit `config/task-routing.json` to add your own categories or move keywords between models.
 

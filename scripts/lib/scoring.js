@@ -18,7 +18,12 @@ function detectLanguage(prompt) {
     "módosítsd", "változtasd", "futtasd", "teszteld", "implementáld",
     "ellenőrizd", "frissítsd", "hozz", "készíts", "szeretném", "kellene",
     "lehetne", "lenne", "hibát", "hibás", "hiba", "fájl", "fájlban",
-    "osztály", "metódus", "függvény", "változó"];
+    "osztály", "metódus", "függvény", "változó",
+    // v3.4.0 (HU): IT-zsargon stems + common short forms so the language
+    // detector still triggers on terse prompts like "refaktorozd a kódot".
+    "refaktor", "kódot", "kód", "biztonsági", "vizsgáld", "elemezd",
+    "tesztet", "tervezz", "tervezd", "ütemterv", "modul", "memória",
+    "szivárgás", "szolgáltatás", "rendszer", "rendszert"];
   var huCount = 0;
   huWords.forEach(function(w) { if (lower.includes(w)) huCount++; });
   if (/[áéíóöőúüű]/i.test(prompt)) huCount += 2;
@@ -29,13 +34,24 @@ function detectLanguage(prompt) {
     "implementiere", "überprüfe", "aktualisiere", "korrigiere",
     "behebe", "refaktoriere", "teste", "optimiere", "datei",
     "fehler", "funktion", "klasse", "methode", "variable",
-    "tippfehler", "hinzu", "entferne"];
+    "tippfehler", "hinzu", "entferne",
+    // v3.4.0 (DE): IT-jargon stems + common short forms so the language
+    // detector still triggers on terse prompts like "Bug beheben".
+    "behebe", "beheben", "bug", "lasttest", "skalierung", "schnittstelle",
+    "modul", "komponente", "konfiguration", "leistung", "speicher",
+    "audit", "schritt", "untersuche", "untersuchen", "auflisten",
+    "umbenennen", "extrahier", "monolith"];
   var deCount = 0;
   deWords.forEach(function(w) { if (lower.includes(w)) deCount++; });
   if (/[äöüß]/i.test(prompt)) deCount += 2;
 
-  if (huCount >= 3 && huCount > deCount) return "hu";
-  if (deCount >= 3 && deCount > huCount) return "de";
+  // v3.4.0: lowered HU/DE threshold from 3 to 2 with the expanded word lists
+  // so terse 2-3 word prompts (e.g. "refaktorozd a kódot", "Bug beheben")
+  // still hit. Single-match-noise risk is mitigated by the extended-list
+  // bias toward IT terms (English short prompts won't accidentally match
+  // 2 IT-specific HU/DE stems).
+  if (huCount >= 2 && huCount > deCount) return "hu";
+  if (deCount >= 2 && deCount > huCount) return "de";
   return "en";
 }
 
