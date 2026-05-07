@@ -1,5 +1,72 @@
 # Changelog
 
+## v3.4.2 — Stats footer reliability fix + statusline TUI mode hint
+
+User reported that after restart, the stats summary was still not
+appearing at the end of responses, and the statusline wasn't visible
+either. Diagnosis:
+
+1. **Stats footer:** The "MANDATORY STATS DISPLAY" instruction was at
+   the START of the routing hook output. By the time Claude composed
+   its long response, that instruction was buried under tens of
+   sub-score / category / Effort / context / quota lines and got
+   forgotten about. Result: Claude rarely appended the footer.
+
+2. **Statusline:** Claude Code 2.1.x has two TUI renderers — `default`
+   (classic main-screen) and `fullscreen` (alt-screen, flicker-free,
+   virtualized scrollback). The statusline is most reliably rendered
+   in **fullscreen** mode. The user's `~/.claude/settings.json` had
+   no `tui` field set, defaulting to `default` mode where the
+   statusline can be invisible or sporadic depending on terminal.
+
+### Fix 1: Stats footer moved to END + `<system-reminder>` formatting
+
+`scripts/analyze-complexity.js` — the stats block was relocated from
+the **top** of the hook output to the **bottom** so it's the last
+thing Claude reads before composing the reply. Empirically much more
+reliable in 2.1.x.
+
+Format also changed from a plain-text "MANDATORY STATS DISPLAY"
+banner to a proper `<system-reminder>` block:
+
+```
+<system-reminder>
+After completing the user's request, append these exact lines as the last
+lines of your response (no other text after them):
+
+📊 haiku 75%(2🤖) ████████░░ | sonnet 13% █░░░░░░░░░ | opus 13% █░░░░░░░░░ | …
+🔋 Context █░░░░░░░░░ 11% | Session ██░░░░░░░░ 16% (42 left)
+📈 Weekly: Haiku █░░░░░░░░░ 14% | Sonnet ██░░░░░░░░ 17% | Opus ████░░░░░░ 38%
+📊 Total: ███████░░░░░░░░░░░░░ 36% (72/200)
+</system-reminder>
+```
+
+`<system-reminder>` is the same wrapper Claude Code uses internally
+for high-priority instructions; Claude treats it as imperative.
+
+### Fix 2: `tui: "fullscreen"` for statusline reliability
+
+User's `~/.claude/settings.json` updated to add `"tui": "fullscreen"`.
+This activates the alt-screen renderer where the statusline appears
+reliably at the bottom of the TUI.
+
+The statusline command itself (added in v3.2.0) was already correct —
+the issue was purely the renderer mode. Manual verification:
+
+```
+🟡 sonnet │ ctx 12% │ wk 35% │ $0.20
+```
+
+### No code-behavior changes for routing
+
+Routing logic, scoring, all v3.x features unchanged. Only the visual
+output format changed (stats footer position + wrapper) and a
+settings.json adjustment.
+
+Tests: 79/79 unit tests pass; preflight green.
+
+Version sync 3.4.1 → 3.4.2.
+
 ## v3.4.1 — Keyword cleanup (post-v3.4.0 audit)
 
 User-requested vocabulary review of the v3.4.0 keyword expansion. The
