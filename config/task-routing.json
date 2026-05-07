@@ -858,7 +858,7 @@
         "helyesírás",
         "helyesírási hiba",
         "rosszul írt",
-        "betű csere",
+        "betűcsere",
         "betűhiba",
         "elírást"
       ],
@@ -940,8 +940,7 @@
         "hozz létre",
         "építs",
         "új funkció implementálása",
-        "képesség hozzáadása",
-        "fícsör"
+        "képesség hozzáadása"
       ],
       "bug_fixing": [
         "javítsd a hibát",
@@ -967,7 +966,7 @@
         "tesztelés",
         "integrációs teszt",
         "mock objektum",
-        "tesztsuit"
+        "tesztkészlet"
       ],
       "code_review": [
         "nézd át",
@@ -977,7 +976,7 @@
         "kód-review",
         "kódellenőrzés",
         "vizsgáld át",
-        "PR review",
+        "pull request átnézése",
         "kód minősége"
       ],
       "small_refactoring": [
@@ -992,17 +991,16 @@
         "kódszépítés",
         "absztraháld",
         "kiemelni metódusba",
-        "függvényké alakítsd",
+        "függvénnyé alakítsd",
         "törd szét kisebb függvényekre",
         "duplikáció eltávolítása",
-        "DRY-osítsd"
+        "DRY elv alkalmazása"
       ],
       "component_creation": [
         "komponens létrehozása",
         "új komponens",
         "osztály létrehozása",
         "modul készítése",
-        "kompo",
         "új modul",
         "modul létrehozása",
         "interface definiálás",
@@ -1038,7 +1036,7 @@
         "kezeld a hibát",
         "kivételkezelés",
         "hibatűrés",
-        "retry logika"
+        "retry-logika"
       ],
       "performance_debug": [
         "lassú",
@@ -1135,7 +1133,7 @@
         "ütemterv",
         "átfogó elemzés",
         "fázisterv",
-        "release plan"
+        "kiadási terv"
       ],
       "system_design": [
         "állapotgép",
