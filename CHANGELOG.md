@@ -1,5 +1,58 @@
 # Changelog
 
+## v3.4.1 — Keyword cleanup (post-v3.4.0 audit)
+
+User-requested vocabulary review of the v3.4.0 keyword expansion. The
+audit caught 9 questionable Hungarian entries — broken language, English
+in HU lists, wrong loanword forms, malformed grammar. v3.4.1 fixes them.
+
+### Hungarian cleanup (9 fixes)
+
+| Category | Before | After | Reason |
+|---|---|---|---|
+| `typo_fix` | `betű csere` | `betűcsere` | one-word per Hungarian orthography |
+| `feature_addition` | `fícsör` | _(deleted)_ | broken loanword; `új funkció` already covers |
+| `testing` | `tesztsuit` | `tesztkészlet` | wrong transliteration of "test suite" |
+| `code_review` | `PR review` | `pull request átnézése` | English phrase, not Hungarian |
+| `small_refactoring` | `függvényké alakítsd` | `függvénnyé alakítsd` | grammar (-é vs -nyé suffix) |
+| `small_refactoring` | `DRY-osítsd` | `DRY elv alkalmazása` | broken hybrid; clean form |
+| `component_creation` | `kompo` | _(deleted)_ | truncated stem, not a word |
+| `error_handling` | `retry logika` | `retry-logika` | hyphenated compound (HU rule) |
+| `planning` | `release plan` | `kiadási terv` | English phrase → Hungarian |
+
+### What stayed
+
+The audit listed several "ASCII-only" entries that LOOK English but are
+actually proper Hungarian IT vocabulary or accepted loanwords:
+
+* Real Hungarian words: `algoritmus`, `adatszerkezet`, `elemezd`,
+  `csatlakoztasd`, `elosztott rendszer`, `rendszerterv`, `adatfolyam`,
+  `mi az`, `hol van`, `hogyan`, `mutasd meg`, `keresd ki`, `teljes
+  projekt`
+* Established loanwords used in HU IT jargon: `webhook`, `bug`,
+  `benchmark`, `komment`, `debugold`, `mock objektum`, `OWASP`,
+  `OAuth`, `JWT`, `CQRS`
+
+### Result
+
+- HU vocabulary: 242 → **240** entries (2 deletions: `fícsör`,
+  `kompo`; the rest were replacements)
+- EN/DE: unchanged
+- All replaced/added entries verified to route correctly:
+  - `betűcsere` → Typo fixes (haiku) ✓
+  - `tesztkészlet írása` → Testing (sonnet) ✓
+  - `pull request átnézése` → Code review (sonnet) ✓
+  - `DRY elv alkalmazása` → Small refactoring (sonnet) ✓
+  - `kiadási terv készítése` → Planning (opus) ✓
+
+### No code-behavior changes
+
+Files modified: `config/task-routing.json` only.
+
+Tests: 79/79 still pass; preflight green.
+
+Version sync 3.4.0 → 3.4.1.
+
 ## v3.4.0 — Keyword expansion (+232 IT-jargon keywords) + `reaktorozd` typo fix
 
 User-reported issue: the README v3.3.x example "Hungarian morphology
