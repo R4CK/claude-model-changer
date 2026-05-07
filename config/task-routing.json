@@ -21,7 +21,10 @@
             "spelling",
             "misspelling",
             "typos",
-            "spellcheck"
+            "spellcheck",
+            "spelling error",
+            "spelling mistake",
+            "case fix"
           ]
         },
         "quick_questions": {
@@ -34,7 +37,10 @@
             "explain this",
             "what's the difference",
             "is this correct",
-            "how do i"
+            "how do i",
+            "tell me",
+            "show me how",
+            "what's this"
           ]
         },
         "search_list": {
@@ -47,7 +53,10 @@
             "grep",
             "count",
             "locate",
-            "show files"
+            "show files",
+            "look up",
+            "browse",
+            "scan"
           ]
         },
         "documentation": {
@@ -62,7 +71,10 @@
             "API docs",
             "add comment",
             "add comments",
-            "write documentation"
+            "write documentation",
+            "javadoc",
+            "tsdoc",
+            "api docs"
           ]
         },
         "rename": {
@@ -72,7 +84,9 @@
             "change name",
             "change variable name",
             "rename variable",
-            "rename function"
+            "rename function",
+            "alias",
+            "refactor name"
           ]
         },
         "formatting": {
@@ -84,7 +98,10 @@
             "format",
             "prettify",
             "lint fix",
-            "fix lint"
+            "fix lint",
+            "lint",
+            "auto-format",
+            "reformat"
           ]
         },
         "comments": {
@@ -94,7 +111,9 @@
             "uncomment",
             "add comment",
             "remove comment",
-            "comment out"
+            "comment out",
+            "annotation",
+            "todo comment"
           ]
         },
         "imports": {
@@ -103,7 +122,10 @@
             "add import",
             "update import",
             "remove import",
-            "remove unused"
+            "remove unused",
+            "module",
+            "dependency import",
+            "require"
           ]
         },
         "status": {
@@ -112,7 +134,10 @@
             "git status",
             "git log",
             "git diff",
-            "status"
+            "status",
+            "diff",
+            "log",
+            "stash"
           ]
         }
       }
@@ -147,7 +172,10 @@
             "new feature",
             "add support",
             "create a new",
-            "build a"
+            "build a",
+            "extend",
+            "augment",
+            "implement feature"
           ]
         },
         "bug_fixing": {
@@ -176,7 +204,11 @@
             "test coverage",
             "e2e test",
             "integration test",
-            "test case"
+            "test case",
+            "mock",
+            "stub",
+            "fixture",
+            "snapshot test"
           ]
         },
         "code_review": {
@@ -187,7 +219,10 @@
             "check for bugs",
             "suggest improvements",
             "find issues",
-            "review this"
+            "review this",
+            "review pr",
+            "feedback",
+            "suggestion"
           ]
         },
         "small_refactoring": {
@@ -199,7 +234,9 @@
             "optimize this",
             "extract function",
             "extract method",
-            "extract component"
+            "extract component",
+            "inline",
+            "rename refactor"
           ]
         },
         "component_creation": {
@@ -209,7 +246,10 @@
             "add component",
             "new component",
             "create a class",
-            "create module"
+            "create module",
+            "factory",
+            "builder",
+            "service"
           ]
         },
         "integration": {
@@ -221,7 +261,10 @@
             "wire up",
             "add API",
             "endpoint",
-            "add route"
+            "add route",
+            "webhook",
+            "polling",
+            "sync"
           ]
         },
         "configuration": {
@@ -233,7 +276,11 @@
             "setup",
             "init",
             "initialize",
-            "bootstrap"
+            "bootstrap",
+            "env vars",
+            "settings file",
+            "config block",
+            "feature flag"
           ]
         },
         "error_handling": {
@@ -244,7 +291,11 @@
             "add validation",
             "handle edge case",
             "handle error",
-            "try catch"
+            "try catch",
+            "try-catch",
+            "exception",
+            "fallback",
+            "retry"
           ]
         },
         "performance_debug": {
@@ -258,7 +309,10 @@
             "timing issue",
             "perf regression",
             "laggy",
-            "too slow"
+            "too slow",
+            "profile",
+            "trace",
+            "metrics"
           ]
         },
         "investigation": {
@@ -271,7 +325,9 @@
             "understand this code",
             "trace through",
             "what does this do",
-            "explain this function"
+            "explain this function",
+            "deep dive",
+            "step through"
           ]
         }
       }
@@ -291,7 +347,10 @@
             "system design",
             "design pattern",
             "redesign",
-            "rearchitect"
+            "rearchitect",
+            "domain model",
+            "bounded context",
+            "API design"
           ]
         },
         "large_refactoring": {
@@ -303,7 +362,8 @@
             "migrate",
             "overhaul",
             "modernize",
-            "refactor across"
+            "refactor across",
+            "split monolith"
           ]
         },
         "multi_file_work": {
@@ -315,7 +375,10 @@
             "project-wide",
             "codebase-wide",
             "every file",
-            "throughout the codebase"
+            "throughout the codebase",
+            "global change",
+            "codebase sweep",
+            "cross-cutting"
           ]
         },
         "algorithms": {
@@ -327,7 +390,10 @@
             "concurrency",
             "parallel",
             "thread-safe",
-            "distributed"
+            "distributed",
+            "graph",
+            "tree",
+            "hash map"
           ]
         },
         "security": {
@@ -338,7 +404,11 @@
             "security review",
             "penetration",
             "OWASP",
-            "security analysis"
+            "security analysis",
+            "OAuth",
+            "JWT",
+            "csrf",
+            "xss"
           ]
         },
         "performance_audit": {
@@ -348,7 +418,10 @@
             "profiling",
             "benchmark",
             "optimize across",
-            "performance optimization"
+            "performance optimization",
+            "load test",
+            "stress test",
+            "scaling"
           ]
         },
         "planning": {
@@ -359,7 +432,9 @@
             "roadmap",
             "comprehensive analysis",
             "thorough review",
-            "tech strategy"
+            "tech strategy",
+            "spike",
+            "design doc"
           ]
         },
         "system_design": {
@@ -370,7 +445,10 @@
             "consensus",
             "event-driven",
             "microservices",
-            "message queue"
+            "message queue",
+            "event sourcing",
+            "CQRS",
+            "microservice"
           ]
         },
         "tech_debt": {
@@ -381,7 +459,10 @@
             "legacy code",
             "deprecation strategy",
             "end of life",
-            "sunset"
+            "sunset",
+            "deprecation",
+            "cleanup",
+            "legacy migration"
           ]
         }
       }
@@ -584,16 +665,66 @@
     "enabled": true,
     "overrideRouting": true,
     "rules": [
-      { "match": "superpowers:debugging", "model": "sonnet", "effort": "high", "reason": "debugging requires deliberation" },
-      { "match": "superpowers:systematic-debugging", "model": "sonnet", "effort": "high", "reason": "systematic debugging requires deliberation" },
-      { "match": "superpowers:test-driven-development", "model": "sonnet", "effort": "medium", "reason": "TDD is moderate complexity" },
-      { "match": "superpowers:writing-plans", "model": "opus", "effort": "high", "reason": "planning is opus territory" },
-      { "match": "superpowers:brainstorming", "model": "opus", "effort": "high", "reason": "brainstorming benefits from opus reasoning" },
-      { "match": "frontend-design", "model": "sonnet", "effort": "medium", "reason": "frontend design is moderate" },
-      { "match": "feature-dev:code-architect", "model": "opus", "effort": "high", "reason": "architecture design is opus" },
-      { "match": "code-review:code-review", "model": "sonnet", "effort": "medium", "reason": "code review is moderate" },
-      { "match": "anthropic-skills:web-artifacts-builder", "model": "sonnet", "effort": "medium", "reason": "elaborate UI artifact" },
-      { "match": "anthropic-skills:skill-creator", "model": "opus", "effort": "high", "reason": "skill creation needs careful design" }
+      {
+        "match": "superpowers:debugging",
+        "model": "sonnet",
+        "effort": "high",
+        "reason": "debugging requires deliberation"
+      },
+      {
+        "match": "superpowers:systematic-debugging",
+        "model": "sonnet",
+        "effort": "high",
+        "reason": "systematic debugging requires deliberation"
+      },
+      {
+        "match": "superpowers:test-driven-development",
+        "model": "sonnet",
+        "effort": "medium",
+        "reason": "TDD is moderate complexity"
+      },
+      {
+        "match": "superpowers:writing-plans",
+        "model": "opus",
+        "effort": "high",
+        "reason": "planning is opus territory"
+      },
+      {
+        "match": "superpowers:brainstorming",
+        "model": "opus",
+        "effort": "high",
+        "reason": "brainstorming benefits from opus reasoning"
+      },
+      {
+        "match": "frontend-design",
+        "model": "sonnet",
+        "effort": "medium",
+        "reason": "frontend design is moderate"
+      },
+      {
+        "match": "feature-dev:code-architect",
+        "model": "opus",
+        "effort": "high",
+        "reason": "architecture design is opus"
+      },
+      {
+        "match": "code-review:code-review",
+        "model": "sonnet",
+        "effort": "medium",
+        "reason": "code review is moderate"
+      },
+      {
+        "match": "anthropic-skills:web-artifacts-builder",
+        "model": "sonnet",
+        "effort": "medium",
+        "reason": "elaborate UI artifact"
+      },
+      {
+        "match": "anthropic-skills:skill-creator",
+        "model": "opus",
+        "effort": "high",
+        "reason": "skill creation needs careful design"
+      }
     ]
   },
   "planMode": {
@@ -620,23 +751,46 @@
     "enabled": true,
     "projectSignals": {
       "python": {
-        "boostKeywords": ["django", "flask", "fastapi", "pandas", "numpy"],
+        "boostKeywords": [
+          "django",
+          "flask",
+          "fastapi",
+          "pandas",
+          "numpy"
+        ],
         "defaultBoost": 0
       },
       "javascript": {
-        "boostKeywords": ["react", "express", "node", "npm"],
+        "boostKeywords": [
+          "react",
+          "express",
+          "node",
+          "npm"
+        ],
         "defaultBoost": 0
       },
       "typescript": {
-        "boostKeywords": ["typescript", "angular", "nest"],
+        "boostKeywords": [
+          "typescript",
+          "angular",
+          "nest"
+        ],
         "defaultBoost": 0
       },
       "rust": {
-        "boostKeywords": ["rust", "cargo", "crate"],
+        "boostKeywords": [
+          "rust",
+          "cargo",
+          "crate"
+        ],
         "defaultBoost": 1
       },
       "go": {
-        "boostKeywords": ["goroutine", "channel", "go mod"],
+        "boostKeywords": [
+          "goroutine",
+          "channel",
+          "go mod"
+        ],
         "defaultBoost": 0
       }
     }
@@ -702,30 +856,43 @@
         "javítsd az elírást",
         "elgépelés",
         "helyesírás",
-        "helyesírási hiba"
+        "helyesírási hiba",
+        "rosszul írt",
+        "betű csere",
+        "betűhiba",
+        "elírást"
       ],
       "rename": [
         "nevezd át",
         "átnevezés",
         "változó átnevezése",
-        "függvény átnevezése"
+        "függvény átnevezése",
+        "azonosító átnevezése",
+        "konstans átnevezése"
       ],
       "formatting": [
         "formázás",
         "behúzás",
         "formázd meg",
-        "szépítsd ki"
+        "szépítsd ki",
+        "kódformázás",
+        "lint javítás",
+        "behúzás javítás"
       ],
       "comments": [
         "komment",
         "megjegyzés",
         "adj hozzá kommentet",
-        "töröld a kommentet"
+        "töröld a kommentet",
+        "kommentelés",
+        "annotáció"
       ],
       "imports": [
         "import hozzáadása",
         "import frissítése",
-        "import törlése"
+        "import törlése",
+        "csomag importálása",
+        "függőség hozzáadása"
       ],
       "quick_questions": [
         "mi az",
@@ -734,26 +901,36 @@
         "melyik fájl",
         "magyarázd el",
         "mi a különbség",
-        "hogyan"
+        "hogyan",
+        "miért",
+        "milyen",
+        "hány"
       ],
       "search_list": [
         "mutasd meg",
         "keresd meg",
         "listázd",
         "keress rá",
-        "hol található"
+        "hol található",
+        "található-e",
+        "keresd ki",
+        "lista készítése"
       ],
       "single_line_edit": [
         "változtasd meg",
         "módosítsd",
         "cseréld ki",
         "töröld a sort",
-        "adj hozzá egy sort"
+        "adj hozzá egy sort",
+        "egy soros javítás",
+        "soron belüli módosítás"
       ],
       "status": [
         "git állapot",
         "ellenőrizd",
-        "státusz"
+        "státusz",
+        "változások listája",
+        "diff megtekintés"
       ],
       "feature_addition": [
         "adj hozzá",
@@ -761,7 +938,10 @@
         "készíts",
         "új funkció",
         "hozz létre",
-        "építs"
+        "építs",
+        "új funkció implementálása",
+        "képesség hozzáadása",
+        "fícsör"
       ],
       "bug_fixing": [
         "javítsd a hibát",
@@ -773,14 +953,21 @@
         "hibás",
         "debugold",
         "bug",
-        "hibajavítás"
+        "hibajavítás",
+        "hibaelhárítás",
+        "működési hiba",
+        "fagyás",
+        "kivétel"
       ],
       "testing": [
         "írj tesztet",
         "teszt",
         "egységteszt",
         "teszteld le",
-        "tesztelés"
+        "tesztelés",
+        "integrációs teszt",
+        "mock objektum",
+        "tesztsuit"
       ],
       "code_review": [
         "nézd át",
@@ -789,16 +976,26 @@
         "review",
         "kód-review",
         "kódellenőrzés",
-        "vizsgáld át"
+        "vizsgáld át",
+        "PR review",
+        "kód minősége"
       ],
       "small_refactoring": [
         "refaktoráld",
         "refaktorálás",
-        "reaktorozás",
+        "refaktorozd",
+        "refaktorozás",
         "tisztítsd meg",
         "egyszerűsítsd",
         "optimalizáld",
-        "kódtisztítás"
+        "kódtisztítás",
+        "kódszépítés",
+        "absztraháld",
+        "kiemelni metódusba",
+        "függvényké alakítsd",
+        "törd szét kisebb függvényekre",
+        "duplikáció eltávolítása",
+        "DRY-osítsd"
       ],
       "component_creation": [
         "komponens létrehozása",
@@ -806,7 +1003,10 @@
         "osztály létrehozása",
         "modul készítése",
         "kompo",
-        "új modul"
+        "új modul",
+        "modul létrehozása",
+        "interface definiálás",
+        "service létrehozás"
       ],
       "integration": [
         "integráld",
@@ -815,7 +1015,10 @@
         "API hozzáadása",
         "végpont hozzáadása",
         "endpoint",
-        "adatfolyam"
+        "adatfolyam",
+        "API integráció",
+        "REST hívás",
+        "webhook"
       ],
       "configuration": [
         "konfiguráld",
@@ -824,13 +1027,18 @@
         "inicializáld",
         "beállítás",
         "konfig fájl",
-        "környezeti változó"
+        "környezeti változó",
+        "környezeti beállítás",
+        "paraméterezés"
       ],
       "error_handling": [
         "hibakezelés",
         "validáció",
         "adj hozzá validációt",
-        "kezeld a hibát"
+        "kezeld a hibát",
+        "kivételkezelés",
+        "hibatűrés",
+        "retry logika"
       ],
       "performance_debug": [
         "lassú",
@@ -838,7 +1046,10 @@
         "miért lassú",
         "teljesítményprobléma",
         "lassúság",
-        "nem elég gyors"
+        "nem elég gyors",
+        "lassúság elemzése",
+        "memóriaszivárgás",
+        "CPU vizsgálat"
       ],
       "investigation": [
         "hogyan működik",
@@ -852,13 +1063,18 @@
         "derítsd ki",
         "elemezd",
         "tárd fel",
-        "kutasd fel"
+        "kutasd fel",
+        "kód feltárása",
+        "függőség elemzés"
       ],
       "documentation": [
         "dokumentáld",
         "dokumentáció",
         "doksit írj",
-        "readme frissítése"
+        "readme frissítése",
+        "kódkommentárok",
+        "használati utasítás",
+        "leírás"
       ],
       "architecture": [
         "architektúra",
@@ -867,54 +1083,75 @@
         "újratervezés",
         "rendszerterv",
         "magas szintű terv",
-        "blueprintet"
+        "blueprintet",
+        "rendszerarchitektúra",
+        "tervezési szempontok"
       ],
       "large_refactoring": [
         "teljes refaktorálás",
         "átstruktúrálás",
         "újraírás",
         "migráció",
-        "modernizálás"
+        "modernizálás",
+        "rendszerszintű refaktorálás",
+        "kódbázis átírása",
+        "monolit szétbontása"
       ],
       "multi_file_work": [
         "minden fájlban",
         "teljes projekt",
         "projekt szerte",
-        "kódbázis szerte"
+        "kódbázis szerte",
+        "összes fájlban",
+        "modul-szintű változtatás"
       ],
       "algorithms": [
         "algoritmus",
         "adatszerkezet",
         "teljesítmény optimalizálás",
-        "párhuzamosítás"
+        "párhuzamosítás",
+        "gráf algoritmus",
+        "rendezési algoritmus",
+        "fa adatstruktúra"
       ],
       "security": [
         "biztonsági audit",
         "sebezhetőség",
-        "biztonsági ellenőrzés"
+        "biztonsági ellenőrzés",
+        "OWASP",
+        "OAuth implementáció"
       ],
       "performance_audit": [
         "teljesítmény audit",
         "profilozás",
         "szűk keresztmetszet",
-        "benchmark"
+        "benchmark",
+        "terheléses teszt",
+        "skálázási vizsgálat"
       ],
       "planning": [
         "megvalósítási terv",
         "migrációs terv",
         "ütemterv",
-        "átfogó elemzés"
+        "átfogó elemzés",
+        "fázisterv",
+        "release plan"
       ],
       "system_design": [
         "állapotgép",
         "cache kezelés",
         "eseményvezérelt",
-        "mikroszolgáltatások"
+        "mikroszolgáltatások",
+        "elosztott rendszer",
+        "esemény alapú architektúra",
+        "CQRS"
       ],
       "tech_debt": [
         "technikai adósság",
         "legacy kód",
-        "elavult kód"
+        "elavult kód",
+        "elavult kód cseréje",
+        "modernizáció"
       ]
     },
     "de": {
@@ -922,30 +1159,39 @@
         "Tippfehler",
         "Tippfehler beheben",
         "Rechtschreibfehler",
-        "Schreibfehler"
+        "Schreibfehler",
+        "Rechtschreibung",
+        "Schreibfehler beheben"
       ],
       "rename": [
         "umbenennen",
         "Variable umbenennen",
         "Funktion umbenennen",
-        "Name ändern"
+        "Name ändern",
+        "Identifier umbenennen",
+        "Konstante umbenennen"
       ],
       "formatting": [
         "Formatierung",
         "Einrückung",
         "formatieren",
-        "aufräumen"
+        "aufräumen",
+        "Code formatieren",
+        "Lint-Fehler"
       ],
       "comments": [
         "Kommentar",
         "Kommentar hinzufügen",
         "Kommentar entfernen",
-        "auskommentieren"
+        "auskommentieren",
+        "Annotation hinzufügen"
       ],
       "imports": [
         "Import hinzufügen",
         "Import aktualisieren",
-        "Import entfernen"
+        "Import entfernen",
+        "Package importieren",
+        "Abhängigkeit hinzufügen"
       ],
       "quick_questions": [
         "was ist",
@@ -954,33 +1200,44 @@
         "welche Datei",
         "erkläre",
         "was ist der Unterschied",
-        "wie"
+        "wie",
+        "warum",
+        "wie funktioniert",
+        "was bedeutet"
       ],
       "search_list": [
         "zeig mir",
         "auflisten",
         "finden",
         "suche nach",
-        "wo befindet sich"
+        "wo befindet sich",
+        "durchsuchen"
       ],
       "single_line_edit": [
         "ändere",
         "aktualisiere",
         "ersetze",
         "Zeile löschen",
-        "Zeile hinzufügen"
+        "Zeile hinzufügen",
+        "Einzeiler",
+        "kleine Änderung"
       ],
       "status": [
         "Git Status",
         "überprüfe",
-        "Status"
+        "Status",
+        "Änderungen anzeigen",
+        "Diff anzeigen"
       ],
       "feature_addition": [
         "füge hinzu",
         "implementiere",
         "erstelle",
         "neues Feature",
-        "baue"
+        "baue",
+        "neue Funktion implementieren",
+        "Feature hinzufügen",
+        "Fähigkeit erweitern"
       ],
       "bug_fixing": [
         "Bug beheben",
@@ -988,50 +1245,73 @@
         "Fehler beheben",
         "funktioniert nicht",
         "kaputt",
-        "repariere"
+        "repariere",
+        "Fehlerbehebung",
+        "Crash fixen",
+        "Ausnahme behandeln"
       ],
       "testing": [
         "schreibe Test",
         "Test",
         "Unit-Test",
         "teste",
-        "Testfall"
+        "Testfall",
+        "Unit-Test schreiben",
+        "Integration-Test",
+        "Mock-Objekt"
       ],
       "code_review": [
         "überprüfe",
         "Code-Review",
         "prüfe den Code",
-        "Review"
+        "Review",
+        "Pull Request review",
+        "Code-Qualität",
+        "Feedback geben"
       ],
       "small_refactoring": [
         "refaktoriere",
         "bereinige",
         "vereinfache",
-        "optimiere"
+        "optimiere",
+        "Methode extrahieren",
+        "Code aufräumen",
+        "Duplikate entfernen"
       ],
       "component_creation": [
         "Komponente erstellen",
         "neue Komponente",
         "Klasse erstellen",
-        "Modul erstellen"
+        "Modul erstellen",
+        "Schnittstelle definieren",
+        "Service erstellen"
       ],
       "integration": [
         "integriere",
         "verbinde",
         "verknüpfe",
-        "API hinzufügen"
+        "API hinzufügen",
+        "API-Integration",
+        "REST-Aufruf",
+        "Webhook"
       ],
       "configuration": [
         "konfiguriere",
         "einrichten",
         "installiere",
-        "initialisiere"
+        "initialisiere",
+        "Config-Datei",
+        "Umgebungsvariable",
+        "Parameter setzen"
       ],
       "error_handling": [
         "Fehlerbehandlung",
         "Validierung",
         "Validierung hinzufügen",
-        "Fehler behandeln"
+        "Fehler behandeln",
+        "Ausnahmebehandlung",
+        "Fehlertoleranz",
+        "Retry-Logik"
       ],
       "performance_debug": [
         "langsam",
@@ -1039,7 +1319,10 @@
         "warum so langsam",
         "Leistungsproblem",
         "Performance-Regression",
-        "zu langsam"
+        "zu langsam",
+        "Langsamkeit analysieren",
+        "Speicherleck",
+        "CPU-Auslastung"
       ],
       "investigation": [
         "wie funktioniert",
@@ -1047,66 +1330,96 @@
         "verfolge die Ausführung",
         "durchgehe",
         "was macht diese Funktion",
-        "verstehen"
+        "verstehen",
+        "Code untersuchen",
+        "Abhängigkeitsanalyse",
+        "Schritt für Schritt"
       ],
       "documentation": [
         "dokumentiere",
         "Dokumentation",
         "Doku schreiben",
-        "Readme aktualisieren"
+        "Readme aktualisieren",
+        "Code-Dokumentation",
+        "Inline-Doku",
+        "API-Doku"
       ],
       "architecture": [
         "Architektur",
         "Systemdesign",
         "Entwurfsmuster",
-        "Neugestaltung"
+        "Neugestaltung",
+        "Systemarchitektur",
+        "Designprinzipien",
+        "Schichtenmodell"
       ],
       "large_refactoring": [
         "komplett refaktorieren",
         "umstrukturieren",
         "Neuschreiben",
         "Migration",
-        "modernisieren"
+        "modernisieren",
+        "Systemweite Umgestaltung",
+        "Codebasis umschreiben",
+        "Monolith aufteilen"
       ],
       "multi_file_work": [
         "alle Dateien",
         "gesamtes Projekt",
         "projektweit",
-        "Codebasis-weit"
+        "Codebasis-weit",
+        "alle Dateien betreffend",
+        "Modul-übergreifende Änderung"
       ],
       "algorithms": [
         "Algorithmus",
         "Datenstruktur",
         "Leistungsoptimierung",
-        "Parallelisierung"
+        "Parallelisierung",
+        "Graphenalgorithmus",
+        "Sortieralgorithmus",
+        "Baumstruktur"
       ],
       "security": [
         "Sicherheitsaudit",
         "Schwachstelle",
-        "Sicherheitsüberprüfung"
+        "Sicherheitsüberprüfung",
+        "OWASP",
+        "OAuth Implementierung",
+        "Authentifizierung"
       ],
       "performance_audit": [
         "Leistungsaudit",
         "Profiling",
         "Engpass",
-        "Benchmark"
+        "Benchmark",
+        "Lasttest",
+        "Skalierungstest"
       ],
       "planning": [
         "Implementierungsplan",
         "Migrationsplan",
         "Roadmap",
-        "umfassende Analyse"
+        "umfassende Analyse",
+        "Zeitplan",
+        "Phasenplan",
+        "Release-Plan"
       ],
       "system_design": [
         "Zustandsmaschine",
         "Cache-Verwaltung",
         "ereignisgesteuert",
-        "Microservices"
+        "Microservices",
+        "Verteiltes System",
+        "Ereignis-basierte Architektur",
+        "CQRS-Muster"
       ],
       "tech_debt": [
         "technische Schulden",
         "Legacy-Code",
-        "veralteter Code"
+        "veralteter Code",
+        "Veralteten Code modernisieren",
+        "Legacy-Migration"
       ]
     }
   },
