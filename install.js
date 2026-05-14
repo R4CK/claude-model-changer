@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Claude Model Changer v3.4.2 - Self-Extracting Installer
+ * Claude Model Changer v3.5.0 - Self-Extracting Installer
  *
  * Usage:
  *   node install.js              # Install plugin
@@ -17,7 +17,7 @@ var crypto = require("crypto");
 var childProcess = require("child_process");
 
 var PLUGIN_NAME = "claude-model-changer";
-var PLUGIN_VERSION = "3.4.2";
+var PLUGIN_VERSION = "3.5.0";
 
 // ---- Marketplace owner detection (runtime, per-machine) ----
 // Resolution order:

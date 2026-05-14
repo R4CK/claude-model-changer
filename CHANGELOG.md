@@ -1,5 +1,80 @@
 # Changelog
 
+## v3.5.0 — External skills auto-sync (4 new repos)
+
+Extends the karpathy-style "always-latest" skill sync pattern to four
+additional upstream skill collections. Every SessionStart now spawns a
+detached background child that, throttled to once per 24h, walks the
+configured repo list and pulls each one **only when its remote HEAD has
+actually changed**.
+
+### New skill sources
+
+Seeded in `config/external-skills.json`:
+
+| Repo | Prefix | Skills | Layout |
+|---|---|---|---|
+| [nexu-io/open-design](https://github.com/nexu-io/open-design) | `od-` | ~107 | `skills/` subfolder |
+| [nextlevelbuilder/ui-ux-pro-max-skill](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill) | (single) | 1 | whole repo is one skill |
+| [ComposioHQ/awesome-claude-skills](https://github.com/ComposioHQ/awesome-claude-skills) | `acs-` | ~28 | top-level dirs with `SKILL.md` |
+| [affaan-m/everything-claude-code](https://github.com/affaan-m/everything-claude-code) | `ecc-` | ~228 | `skills/` subfolder |
+
+Per-repo prefixes keep names from colliding with existing karpathy
+skills or each other (e.g. `brand-guidelines` appears in 3 of the 4
+repos).
+
+### Smart-update: two-tier "only if changed"
+
+1. **Time throttle** (`external-skills-session-sync.js`) — skips the
+   whole spawn if the last successful sync stamp is < 24h old.
+   Configurable via `sync.intervalHours` in the config.
+2. **Per-repo HEAD diff** (`sync-external-skills.js`) — for each
+   enabled repo, runs `git ls-remote origin HEAD` (a few KB, no
+   object download) and compares to the local `HEAD` sha. If shas
+   match **and** every dest skill folder still exists, the repo is
+   skipped entirely. No fetch, no reset, no copy. Measured full
+   no-op run across 4 repos: ~2 seconds.
+
+When a remote sha differs, the script does a shallow `fetch --depth 1`,
+hard-resets to `FETCH_HEAD`, discovers skill folders per the repo's
+declared `layout` (`subfolder` / `root-multi` / `root-single`), and
+mirrors them into the plugin's `skills/` directory.
+
+### Layout discovery rules
+
+- `subfolder`: every directory under `<repo>/<skillsPath>/`
+- `root-multi`: every top-level directory that contains `SKILL.md`
+  or `skill.json` (auto-excludes README/CI/dotfiles and any name
+  in the repo's `excludeFolders`)
+- `root-single`: the repo root is treated as one skill
+
+Symlinks are dereferenced rather than recreated, so dest folders are
+self-contained on Windows (where `ui-ux-pro-max-skill` uses symlinks
+for shared data).
+
+### Files
+
+- **New:** `config/external-skills.json` — repo list + sync config
+- **New:** `scripts/sync-external-skills.js` — generic syncer with
+  smart HEAD-diff and layout-aware skill discovery
+- **New:** `scripts/external-skills-session-sync.js` — throttled
+  background spawner (mirrors `karpathy-session-sync.js`)
+- **Modified:** `scripts/runtime-check.js` — SessionStart now spawns
+  the external sync alongside the existing karpathy sync
+- **Modified:** `.gitignore` — auto-synced skill dirs (`acs-*`,
+  `ecc-*`, `od-*`, `nlb-*`, `karpathy-*`) and last-sync stamps are
+  no longer tracked
+
+### Manual refresh
+
+```
+node scripts/sync-external-skills.js skills           # all repos
+node scripts/sync-external-skills.js skills --force   # bypass smart-skip
+node scripts/sync-external-skills.js skills --repo=open-design
+```
+
+---
+
 ## v3.4.2 — Stats footer reliability fix + statusline TUI mode hint
 
 User reported that after restart, the stats summary was still not
