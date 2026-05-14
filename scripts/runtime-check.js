@@ -32,6 +32,19 @@ try {
   if (syncChild && typeof syncChild.unref === "function") syncChild.unref();
 } catch (e) { /* never block session start */ }
 
+// v3.5.0: external skills sync (open-design, ui-ux-pro-max, awesome-claude-skills,
+// everything-claude-code) — same throttled background pattern. Config in
+// config/external-skills.json. The downstream script does a cheap `git ls-remote`
+// per repo and only fetches/copies when the remote HEAD actually changed.
+try {
+  var extChild = cp.spawn(process.execPath, [path.join(__dirname, "external-skills-session-sync.js")], {
+    detached: true,
+    stdio: "ignore",
+    windowsHide: true
+  });
+  if (extChild && typeof extChild.unref === "function") extChild.unref();
+} catch (e) { /* never block session start */ }
+
 try {
   var result = cp.spawnSync(process.execPath, [PREFLIGHT, "--runtime", "--json", "--quiet"], {
     encoding: "utf8",

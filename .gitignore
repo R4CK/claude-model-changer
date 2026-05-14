@@ -35,6 +35,17 @@ vscode-extension/node_modules/
 *.zip
 claude-modell-changer-install.js
 
+# Auto-synced external skills (managed by scripts/sync-external-skills.js
+# and scripts/sync-karpathy-skills.js). Only `skills/model-router/` ships
+# with the repo; everything else is pulled at runtime per repo prefix.
+skills/acs-*/
+skills/ecc-*/
+skills/od-*/
+skills/nlb-*/
+skills/karpathy-*/
+logs/external-skills-last-sync.json
+logs/karpathy-last-sync.json
+
 # OS / editor noise
 .DS_Store
 Thumbs.db
