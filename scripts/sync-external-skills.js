@@ -76,6 +76,15 @@ var LOG_KEEP_LINES          = 500;
 var SHRINK_THRESHOLD        = 0.5;
 var WIN_RESERVED_RE = /^(con|prn|aux|nul|com\d|lpt\d)$/i;
 
+// Bump when materialize semantics change in a way that requires re-running
+// over already-materialized repos. The state file stores the version it was
+// written under; if it differs from the current value, all repos are forced
+// to re-materialize so the new transform applies retroactively.
+//   v1: initial release (v3.5.0)
+//   v2: SKILL.md `name:` field rewritten to match the prefixed folder name
+//       (Anthropic skill spec compliance + intra-plugin name uniqueness)
+var MATERIALIZER_VERSION = 2;
+
 // ---- REPO CONFIG ----
 //   slug      : folder prefix (`<slug>-<skill-name>`) and cache dir name
 //   url       : git URL
@@ -373,7 +382,12 @@ function syncRepo(repo, state) {
     head = fetchHead;
   }
 
-  if (prev.sha === head && Array.isArray(prev.folders) && prev.folders.length > 0 && !freshClone) {
+  // Smart-skip: same SHA + materializer version → safe to skip.
+  // If MATERIALIZER_VERSION changed since the state was written, force a
+  // re-materialize even on unchanged SHA so the new transform applies.
+  var sameMaterializer = (prev.materializerVersion === MATERIALIZER_VERSION);
+  if (prev.sha === head && sameMaterializer &&
+      Array.isArray(prev.folders) && prev.folders.length > 0 && !freshClone) {
     logEvent("INFO", repo.slug, "skipUnchanged", "sha unchanged",
              { sha: head, folders: prev.folders.length });
     return { changed: false, sha: head, folders: prev.folders };
@@ -434,6 +448,49 @@ function discoverSkillFolders(repo, clonePath) {
   return srcDirs;
 }
 
+// After a skill is copied into its prefixed destination folder, rewrite the
+// YAML `name:` field in SKILL.md so it matches the new folder name. Without
+// this, Claude Code's skill loader sees `name: shadcn-ui` inside a folder
+// called `opendesign-shadcn-ui` — a spec violation that can either cause the
+// skill to be skipped entirely or cause cross-repo skill-ID collisions
+// (e.g. two different folders both claiming `name: mcp-builder`).
+//
+// Conservative regex: only the `name:` line in the frontmatter block, only
+// the first occurrence, preserves indentation, drops quoting. If SKILL.md is
+// missing or has no recognizable frontmatter, leave the folder alone.
+function rewriteSkillName(destDir, newName) {
+  var smPath = path.join(destDir, "SKILL.md");
+  if (!fs.existsSync(smPath)) return false;
+  var raw;
+  try { raw = fs.readFileSync(smPath, "utf8"); } catch (e) { return false; }
+  var content = raw.replace(/^﻿/, "");
+  // Match leading frontmatter delimiter; require it to actually be a YAML block
+  var fmMatch = content.match(/^(---[ \t]*\r?\n)([\s\S]*?)(\r?\n---[ \t]*\r?\n)/);
+  if (!fmMatch) return false;
+  var fmStart = fmMatch[1];
+  var fmBody  = fmMatch[2];
+  var fmEnd   = fmMatch[3];
+  var rest    = content.slice(fmMatch[0].length);
+  // Replace the first top-level `name:` line. Handles quoted ('foo'/"foo")
+  // and unquoted values. Preserves leading whitespace (sanity: top-level
+  // keys typically have none, but defensive).
+  var nameRe = /^([ \t]*name[ \t]*:[ \t]*).*$/m;
+  var newBody;
+  if (nameRe.test(fmBody)) {
+    newBody = fmBody.replace(nameRe, "$1" + newName);
+  } else {
+    // No `name:` field at all — prepend one. Extremely rare in practice.
+    newBody = "name: " + newName + (fmBody.length > 0 ? "\n" + fmBody : "");
+  }
+  if (newBody === fmBody) return false;
+  try {
+    fs.writeFileSync(smPath, fmStart + newBody + fmEnd + rest, "utf8");
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 function normalizeSkillName(repoSlug, rawName) {
   var slug = rawName.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
   if (!slug) return null;
@@ -486,6 +543,10 @@ function materializeSkills(repo, clonePath) {
     try {
       if (fs.existsSync(tmp)) rmrfSync(tmp);
       copyDirRecursive(entry.src, tmp);
+      // Spec-compliance fix-up: rewrite YAML `name:` field inside the tmp copy
+      // BEFORE the final atomic rename, so discovery never sees a mismatched
+      // SKILL.md and we don't need a separate atomic write inside dest.
+      rewriteSkillName(tmp, finalName);
       if (fs.existsSync(dest)) rmrfSync(dest);
       fs.renameSync(tmp, dest);
       written.push(finalName);
@@ -569,6 +630,7 @@ function main() {
           syncedAt: new Date().toISOString(),
           folders: result.folders,
           skillCount: result.folders.length,
+          materializerVersion: MATERIALIZER_VERSION,
           changed: result.changed,
           lastError: null
         };
