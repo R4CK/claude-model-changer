@@ -32,6 +32,20 @@ try {
   if (syncChild && typeof syncChild.unref === "function") syncChild.unref();
 } catch (e) { /* never block session start */ }
 
+// v3.5.0: kick off the 5-repo external skill sync (everything, mattpocock,
+// uiuxmax, composio, opendesign). Same detached-spawn pattern as karpathy
+// above. sync-external-skills.js does its own SHA-based smart-sync — fetches
+// every session but only pulls/copies when an upstream commit actually changed.
+try {
+  var extChild = cp.spawn(process.execPath,
+    [path.join(__dirname, "sync-external-skills.js"), "--background"], {
+    detached: true,
+    stdio: "ignore",
+    windowsHide: true
+  });
+  if (extChild && typeof extChild.unref === "function") extChild.unref();
+} catch (e) { /* never block session start */ }
+
 try {
   var result = cp.spawnSync(process.execPath, [PREFLIGHT, "--runtime", "--json", "--quiet"], {
     encoding: "utf8",

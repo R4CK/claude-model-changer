@@ -20,7 +20,19 @@ var OUTPUT = path.join(ROOT, "install.js");
 var DIRS_TO_INCLUDE = ["scripts", "config", "commands", "agents", "skills", "hooks", ".claude-plugin"];
 var FILES_TO_INCLUDE = ["README.md", "LICENSE", "CHANGELOG.md", "CLAUDE.md"];
 // Exclude mutable/generated files
-var EXCLUDE = ["logs/", "node_modules/", ".git/", "vscode-extension/", "install.js", "package.json", ".gitignore", "marketplace.json"];
+var EXCLUDE = [
+  "logs/", "node_modules/", ".git/", "vscode-extension/",
+  "install.js", "package.json", ".gitignore", "marketplace.json",
+  // v3.5.0: runtime-generated external skill cache + namespaced folders.
+  // Never bake these into the bundle — they are pulled from GitHub at
+  // every Claude session start (see scripts/sync-external-skills.js).
+  ".external-skills-cache/",
+  "skills/everything-",
+  "skills/mattpocock-",
+  "skills/uiuxmax-",
+  "skills/composio-",
+  "skills/opendesign-"
+];
 
 function shouldExclude(relPath) {
   for (var i = 0; i < EXCLUDE.length; i++) {
@@ -392,6 +404,18 @@ console.log("[build] Generated: install.js");
 console.log("[build] Size: " + Math.round(outputStat.size / 1024) + " KB");
 console.log("[build] Files embedded: " + allFiles.length);
 console.log("[build] Source size: " + Math.round(totalSize / 1024) + " KB");
+
+// v3.5.0 safety net: external skill folders must NEVER leak into the bundle.
+// Current healthy bundle is ~500 KB. If it grows past 5 MB the EXCLUDE patterns
+// are misconfigured and external skills got baked in — abort the build.
+var MAX_BUNDLE_BYTES = 5 * 1024 * 1024;
+if (outputStat.size > MAX_BUNDLE_BYTES) {
+  console.error("[build] FATAL: install.js exceeds " + (MAX_BUNDLE_BYTES / 1024 / 1024) +
+                " MB (" + Math.round(outputStat.size / 1024) + " KB).");
+  console.error("[build] External skills likely baked into the bundle - check EXCLUDE patterns.");
+  try { fs.unlinkSync(OUTPUT); } catch (e) {}
+  process.exit(1);
+}
 console.log("");
 console.log("[build] Usage:");
 console.log("  node install.js              # Install plugin");
