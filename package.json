@@ -1,6 +1,6 @@
 {
   "name": "claude-model-changer",
-  "version": "3.4.2",
+  "version": "3.5.0",
   "description": "Claude Code plugin that automatically routes tasks to haiku/sonnet/opus based on complexity analysis",
   "license": "MIT",
   "author": "NEON",
