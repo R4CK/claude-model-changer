@@ -1,7 +1,7 @@
 {
   "name": "claude-model-changer",
-  "version": "3.4.2",
-  "description": "Automatically routes tasks to the appropriate Claude model (haiku/sonnet/opus) based on complexity analysis. 30 task categories, multi-language (EN/HU/DE), LLM-fallback learning, anomaly detection, adaptive weights. Saves 40-60% on mixed workloads.",
+  "version": "3.5.0",
+  "description": "Automatically routes tasks to the appropriate Claude model (haiku/sonnet/opus) based on complexity analysis. 30 task categories, multi-language (EN/HU/DE), LLM-fallback learning, anomaly detection, adaptive weights. Saves 40-60% on mixed workloads. v3.5.0 adds smart auto-sync of 5 external Claude Skill repos (everything-claude-code, mattpocock/skills, ui-ux-pro-max-skill, awesome-claude-skills, open-design) on every session start, in addition to the existing karpathy sync.",
   "author": {
     "name": "R4CK",
     "url": "https://github.com/R4CK"

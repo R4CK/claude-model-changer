@@ -1,5 +1,66 @@
 # Changelog
 
+## v3.5.0 — Five-repo external skill auto-sync (in addition to karpathy)
+
+### New features
+
+- **`scripts/sync-external-skills.js`** — smart, every-session auto-sync of five
+  curated Claude skill GitHub repos into the plugin's `skills/` folder, so
+  Claude Code auto-discovers them as `claude-model-changer:<slug>-<skill>`.
+  Karpathy is intentionally NOT in this list; `sync-karpathy-skills.js`
+  continues to mirror that one repo with the original folder names.
+  - `everything` — `affaan-m/everything-claude-code` (~228 skills)
+  - `mattpocock` — `mattpocock/skills` (engineering + productivity + misc;
+    skips deprecated/in-progress/personal)
+  - `uiuxmax` — `nextlevelbuilder/ui-ux-pro-max-skill` (sources from
+    `.claude/skills/`)
+  - `composio` — `ComposioHQ/awesome-claude-skills` (master branch;
+    root-level folders that contain `SKILL.md`)
+  - `opendesign` — `nexu-io/open-design` (multi-source: pulls both
+    `skills/` and `design-templates/`)
+- **Smart-sync semantics** — fetches every session, but compares `HEAD` vs
+  `FETCH_HEAD` and only pulls + materializes when the upstream SHA changed.
+  Second run on an unchanged tree is ~5 s.
+- **Namespacing** — every imported folder is renamed `<repo-slug>-<skill-name>`
+  to avoid collisions with built-in Anthropic skills (`mcp-builder`,
+  `skill-creator`, `brand-guidelines`, …) and with each other.
+- **First-clone optimization** — `git clone --depth 1 --filter=blob:none
+  --no-checkout` + `sparse-checkout set <paths>`, so the local clone is just
+  the skill subtree. Multiple sparse paths per repo are supported (used by
+  open-design).
+- **Atomic per-skill swap** — `<dest>.tmp` + rmrf + rename. A half-copied
+  skill is never visible to discovery.
+- **Cleanup of upstream-removed skills**, gated by a 50% anomaly threshold so
+  a transient reorg cannot wipe the local mirror.
+- **Per-repo isolation** — one repo failing never blocks the others; the last
+  good `folders[]` is preserved so discovery keeps working.
+
+### Wiring
+
+- `scripts/runtime-check.js` now spawns a second detached child for
+  `sync-external-skills.js --background` alongside the existing
+  `karpathy-session-sync.js` spawn. SessionStart latency unchanged.
+
+### Build
+
+- `scripts/build-installer.js` `EXCLUDE` list now also excludes
+  `.external-skills-cache/` and every `skills/<slug>-*` folder, so a developer
+  who runs the sync locally before `build-installer.js` doesn't accidentally
+  bake hundreds of MB of synced skills into `install.js`.
+- New 5 MB sanity check at the end of build: if the bundle exceeds 5 MB
+  (current healthy size is ~500 KB), the build aborts and deletes the bad
+  bundle.
+
+### Operational notes
+
+- Sync state: `<plugin>/logs/external-skills-state.json` (per-repo SHA +
+  folder list).
+- Sync log: `<plugin>/logs/external-skills-sync.log` (JSONL, rotates at 50 KB).
+- Lock: `<plugin>/logs/external-skills-state.json.lock` (PID-based, stale
+  detection).
+- Manual run: `node scripts/sync-external-skills.js` self-detaches to bg and
+  exits. Use `--foreground` for blocking debug, `--dry-run` for plan-only.
+
 ## v3.4.2 — Stats footer reliability fix + statusline TUI mode hint
 
 User reported that after restart, the stats summary was still not
