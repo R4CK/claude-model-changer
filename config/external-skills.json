@@ -1,7 +1,7 @@
 {
   "$schema": "./external-skills.schema.json",
-  "version": "1.0",
-  "description": "Auto-synced skill sources. sync-external-skills.js clones each repo on first run, then on subsequent runs only fetches/copies when the remote HEAD has changed. Skill folders are mirrored into the plugin's skills/ dir, optionally prefixed to avoid name collisions.",
+  "version": "2.0",
+  "description": "Auto-synced external skill/agent/command sources. sync-external-skills.js clones each repo on first run, then on subsequent runs only fetches/copies when the remote HEAD has changed. Each repo can declare multiple `sources` — one per kind (skill, agent, command, hook). Items are mirrored into the plugin's skills/, agents/, commands/, hooks/ dirs under per-repo prefixes to avoid name collisions.",
   "sync": {
     "enabled": true,
     "intervalHours": 24,
@@ -11,35 +11,143 @@
     {
       "name": "open-design",
       "url": "https://github.com/nexu-io/open-design",
-      "layout": "subfolder",
-      "skillsPath": "skills",
-      "destPrefix": "od-",
       "enabled": true,
-      "excludeFolders": []
+      "sources": [
+        {
+          "kind": "skill",
+          "layout": "subfolder",
+          "skillsPath": "skills",
+          "destPrefix": "od-",
+          "excludeFolders": []
+        }
+      ]
     },
     {
       "name": "ui-ux-pro-max-skill",
       "url": "https://github.com/nextlevelbuilder/ui-ux-pro-max-skill",
-      "layout": "root-single",
-      "destFolderName": "nlb-ui-ux-pro-max",
-      "enabled": true
+      "enabled": true,
+      "sources": [
+        {
+          "kind": "skill",
+          "layout": "root-single",
+          "destFolderName": "nlb-ui-ux-pro-max"
+        }
+      ]
     },
     {
       "name": "awesome-claude-skills",
       "url": "https://github.com/ComposioHQ/awesome-claude-skills",
-      "layout": "root-multi",
-      "destPrefix": "acs-",
       "enabled": true,
-      "excludeFolders": ["composio-skills", "connect-apps-plugin", "document-skills"]
+      "sources": [
+        {
+          "kind": "skill",
+          "layout": "root-multi",
+          "destPrefix": "acs-",
+          "excludeFolders": ["composio-skills", "connect-apps-plugin", "document-skills"]
+        }
+      ]
     },
     {
       "name": "everything-claude-code",
       "url": "https://github.com/affaan-m/everything-claude-code",
-      "layout": "subfolder",
-      "skillsPath": "skills",
-      "destPrefix": "ecc-",
       "enabled": true,
-      "excludeFolders": []
+      "sources": [
+        {
+          "kind": "skill",
+          "layout": "subfolder",
+          "skillsPath": "skills",
+          "destPrefix": "ecc-"
+        },
+        {
+          "kind": "agent",
+          "layout": "flat-md",
+          "skillsPath": "agents",
+          "destPrefix": "ecc-"
+        },
+        {
+          "kind": "command",
+          "layout": "flat-md",
+          "skillsPath": "commands",
+          "destPrefix": "ecc-"
+        }
+      ]
+    },
+    {
+      "name": "superpowers",
+      "url": "https://github.com/obra/superpowers.git",
+      "enabled": true,
+      "sources": [
+        {
+          "kind": "skill",
+          "layout": "subfolder",
+          "skillsPath": "skills",
+          "destPrefix": "sp-"
+        }
+      ]
+    },
+    {
+      "name": "ruflo",
+      "url": "https://github.com/ruvnet/ruflo.git",
+      "enabled": true,
+      "sources": [
+        {
+          "kind": "skill",
+          "layout": "subfolder",
+          "skillsPath": ".agents/skills",
+          "destPrefix": "rf-"
+        },
+        {
+          "kind": "agent",
+          "layout": "nested-md",
+          "skillsPath": ".claude/agents",
+          "destPrefix": "rf-",
+          "excludeFolders": []
+        },
+        {
+          "kind": "command",
+          "layout": "nested-md",
+          "skillsPath": ".claude/commands",
+          "destPrefix": "rf-",
+          "excludeFolders": []
+        },
+        {
+          "kind": "skill",
+          "layout": "plugin-multi",
+          "skillsPath": "plugins",
+          "innerPath": "skills",
+          "innerLayout": "subfolder",
+          "destPrefix": "rfp-"
+        },
+        {
+          "kind": "agent",
+          "layout": "plugin-multi",
+          "skillsPath": "plugins",
+          "innerPath": "agents",
+          "innerLayout": "flat-md",
+          "destPrefix": "rfp-"
+        },
+        {
+          "kind": "command",
+          "layout": "plugin-multi",
+          "skillsPath": "plugins",
+          "innerPath": "commands",
+          "innerLayout": "flat-md",
+          "destPrefix": "rfp-"
+        }
+      ]
+    },
+    {
+      "name": "obsidian-cli-skill",
+      "url": "https://github.com/pablo-mano/Obsidian-CLI-skill.git",
+      "enabled": true,
+      "sources": [
+        {
+          "kind": "skill",
+          "layout": "subfolder",
+          "skillsPath": "skills",
+          "destPrefix": "obs-"
+        }
+      ]
     }
   ]
 }
