@@ -1,5 +1,39 @@
 # Changelog
 
+## v3.6.1 — Installer cleans up orphan version dirs
+
+The installer's `manualRegister()` previously wrote the new version
+into its own dir (`cache/<owner>/claude-model-changer/<VERSION>/`) but
+never removed the old version dirs. Across a few upgrades that adds
+up: each old install is ~3MB of bundled source that nothing references
+anymore. Now a `cleanupOldVersions()` step runs before the new dir is
+created and sweeps any sibling whose name matches a SemVer pattern
+(`X.Y.Z` or `X.Y.Z[-prerelease]`).
+
+### Behavior
+
+- Wipes `cache/<owner>/claude-model-changer/<OLD_VERSION>/` for every
+  sibling version dir (anything other than the version being installed)
+- Removes stale entries from `installed_plugins.json` that point to
+  the now-deleted version paths
+- **Does NOT touch**:
+  - `cache/<owner>/external/` (synced skills/agents/commands — shared
+    across versions, kept for the `git ls-remote` smart-skip logic)
+  - Non-SemVer entries in the parent dir (defensive guard against
+    surprise files)
+  - User logs, settings, or any path outside the plugin's own cache
+- Safe to run repeatedly: no-op on a fresh install (no siblings to remove)
+
+### Files
+
+- **Modified:** `scripts/build-installer.js` — emits the new
+  `cleanupOldVersions(cacheDir)` function and wires it into
+  `manualRegister()`
+- **Rebuilt:** `install.js`, `dist/install.js`
+- Plugin version: 3.6.0 → 3.6.1
+
+---
+
 ## v3.6.0 — Multi-source auto-sync (agents + commands + 3 new repos)
 
 Extends the v3.5.0 external-sync system in two directions:
