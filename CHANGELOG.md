@@ -1,5 +1,101 @@
 # Changelog
 
+## v3.6.0 — Multi-source auto-sync (agents + commands + 3 new repos)
+
+Extends the v3.5.0 external-sync system in two directions:
+
+1. **The syncer can now mirror agents and commands**, not just skills.
+   Each repo declares a `sources` array; every entry has a `kind`
+   (`skill` / `agent` / `command` / `hook`) which routes the item to
+   the matching plugin dir (`skills/` / `agents/` / `commands/` /
+   `hooks/`).
+2. **Three new repos** join the auto-sync set:
+   [obra/superpowers](https://github.com/obra/superpowers),
+   [ruvnet/ruflo](https://github.com/ruvnet/ruflo),
+   [pablo-mano/Obsidian-CLI-skill](https://github.com/pablo-mano/Obsidian-CLI-skill).
+   The existing `everything-claude-code` repo also picks up its 60
+   agents and 75 commands that v3.5.0 missed.
+
+### Summary of synced inventory (per-run measurements)
+
+| Repo | Skills | Agents | Commands | Prefix |
+|---|---:|---:|---:|---|
+| open-design | 131 | – | – | `od-` |
+| ui-ux-pro-max-skill | 1 | – | – | `nlb-` |
+| awesome-claude-skills | 28 | – | – | `acs-` |
+| everything-claude-code | 230 | 60 | 75 | `ecc-` |
+| **superpowers** | 14 | – | – | `sp-` |
+| **ruflo** (main) | 134 | 107 | 153 | `rf-` |
+| **ruflo** (`plugins/*`) | 104 | 45 | 40 | `rfp-` |
+| **obsidian-cli-skill** | 1 | – | – | `obs-` |
+| **Total** | **643** | **212** | **268** | |
+
+Total per-session footprint: ~1100 items across 7 repos. The whole
+batch syncs in ~3 seconds when nothing changed remotely (one
+`git ls-remote` per repo, no other I/O).
+
+### New layout types
+
+| `layout` | Behavior |
+|---|---|
+| `subfolder` | each child folder of `<skillsPath>/` = one item (existing) |
+| `root-multi` | each top-level folder that has SKILL.md/skill.json (existing) |
+| `root-single` | the repo (or `<skillsPath>`) itself = one item (existing) |
+| **`flat-md`** | each `.md` file directly under `<skillsPath>/` = one item |
+| **`nested-md`** | recursively walk `<skillsPath>/`; each `.md` file = one item (subdir parts become dashed name segments) |
+| **`plugin-multi`** | iterate `<skillsPath>/<plugin>/<innerPath>/...` per sub-plugin, prefixing items with `<plugin>-` (used for ruflo `plugins/` ecosystem) |
+
+README/CHANGELOG/LICENSE-style docs are auto-skipped in `flat-md` /
+`nested-md` so they don't accidentally appear as fake agents/commands.
+
+### Config schema v2
+
+```jsonc
+{
+  "sync": { "enabled": true, "intervalHours": 24, "background": true },
+  "repos": [
+    {
+      "name": "everything-claude-code",
+      "url": "https://github.com/affaan-m/everything-claude-code",
+      "enabled": true,
+      "sources": [
+        { "kind": "skill",   "layout": "subfolder", "skillsPath": "skills",   "destPrefix": "ecc-" },
+        { "kind": "agent",   "layout": "flat-md",   "skillsPath": "agents",   "destPrefix": "ecc-" },
+        { "kind": "command", "layout": "flat-md",   "skillsPath": "commands", "destPrefix": "ecc-" }
+      ]
+    }
+  ]
+}
+```
+
+The legacy v3.5.0 single-source format (`layout` + `skillsPath` at the
+repo root, no `sources` array) still works — it's transparently
+synthesized into a single-source array at load time.
+
+### CLI contract change
+
+`sync-external-skills.js` now takes the **plugin root** (not just
+`skills/`). The session-sync wrapper was updated accordingly. For
+backward compat the syncer auto-strips a trailing `/skills` from the
+arg, so v3.5.0 callers don't break.
+
+### Files
+
+- **Modified:** `scripts/sync-external-skills.js` — multi-source
+  iteration, `flat-md`/`nested-md`/`plugin-multi` layout support,
+  kind-based dest routing
+- **Modified:** `scripts/external-skills-session-sync.js` — passes
+  plugin root instead of `skills/`
+- **Modified:** `config/external-skills.json` — v2 schema with
+  `sources` arrays; +3 new repos
+- **Modified:** `.gitignore` — added `agents/<prefix>` and
+  `commands/<prefix>` patterns for the new auto-synced items
+- **Modified:** `scripts/build-installer.js` — EXCLUDE list extended
+  with `agents/`, `commands/`, and the new prefixes so the bundle
+  stays at ~870KB
+
+---
+
 ## v3.5.0 — External skills auto-sync (4 new repos)
 
 Extends the karpathy-style "always-latest" skill sync pattern to four

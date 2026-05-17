@@ -23,11 +23,14 @@ var FILES_TO_INCLUDE = ["README.md", "LICENSE", "CHANGELOG.md", "CLAUDE.md"];
 var EXCLUDE = [
   "logs/", "node_modules/", ".git/", "vscode-extension/",
   "install.js", "package.json", ".gitignore", "marketplace.json",
-  // Auto-synced skills (fetched at runtime by sync-external-skills.js
-  // and sync-karpathy-skills.js). Only `skills/model-router/` ships in
-  // the bundle; everything else is gitignored and must NOT be embedded,
+  // Auto-synced items (fetched at runtime by sync-external-skills.js
+  // and sync-karpathy-skills.js). Only built-in items ship in the
+  // bundle; every prefix below is gitignored and must NOT be embedded,
   // or the bundle balloons and reproducibility differs per dev machine.
-  "skills/acs-", "skills/ecc-", "skills/od-", "skills/nlb-", "skills/karpathy-"
+  "skills/acs-", "skills/ecc-", "skills/od-", "skills/nlb-", "skills/karpathy-",
+  "skills/sp-", "skills/rf-", "skills/rfp-", "skills/obs-",
+  "agents/ecc-", "agents/rf-", "agents/rfp-",
+  "commands/ecc-", "commands/rf-", "commands/rfp-"
 ];
 
 function shouldExclude(relPath) {

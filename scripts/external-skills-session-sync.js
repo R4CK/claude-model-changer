@@ -36,7 +36,11 @@ var cp = require("child_process");
 var PLUGIN_ROOT = path.resolve(__dirname, "..");
 var STAMP_FILE = path.join(PLUGIN_ROOT, "logs", "external-skills-last-sync.json");
 var SYNC_SCRIPT = path.join(__dirname, "sync-external-skills.js");
-var SKILLS_DIR = path.join(PLUGIN_ROOT, "skills");
+// v3.6.0: pass the plugin root (not just skills/). The syncer routes items
+// into skills/, agents/, commands/, or hooks/ depending on each source's
+// `kind`. Trailing /skills is still auto-stripped by the syncer for
+// backward compatibility with v3.5.0 callers.
+var DEST_ARG = PLUGIN_ROOT;
 var CONFIG_FILE = path.join(PLUGIN_ROOT, "config", "external-skills.json");
 
 function readJsonSafe(p) {
@@ -86,7 +90,7 @@ function spawnSync(cfg) {
   // check will retry actual work next interval.
   writeStamp();
 
-  var args = [SYNC_SCRIPT, SKILLS_DIR];
+  var args = [SYNC_SCRIPT, DEST_ARG];
   if (cfg.background) {
     var child = cp.spawn(process.execPath, args, {
       detached: true,
