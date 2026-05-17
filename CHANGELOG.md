@@ -46,7 +46,14 @@ batch syncs in ~3 seconds when nothing changed remotely (one
 | **`plugin-multi`** | iterate `<skillsPath>/<plugin>/<innerPath>/...` per sub-plugin, prefixing items with `<plugin>-` (used for ruflo `plugins/` ecosystem) |
 
 README/CHANGELOG/LICENSE-style docs are auto-skipped in `flat-md` /
-`nested-md` so they don't accidentally appear as fake agents/commands.
+`nested-md`. For `kind: agent` and `kind: command` sources, the walker
+**additionally requires** YAML frontmatter (`---` at byte 0) — this
+filters out reference/documentation `.md` files that sit inside
+`commands/` subfolders (e.g. ruflo's `.claude/commands/agents/`
+capability tables, which are docs, not slash commands). Skills are
+folder-based so this check doesn't apply to them. Empirically this
+strips 126 false-positive commands from ruflo without affecting any
+real item.
 
 ### Config schema v2
 

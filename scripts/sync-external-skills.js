@@ -218,12 +218,33 @@ function hasSkillMarker(folderPath) {
          fs.existsSync(path.join(folderPath, "skill.json"));
 }
 
+// Cheap check: does the file start with a YAML frontmatter delimiter?
+// Used to skip doc/reference .md files that masquerade as agents/commands.
+// Reads only the first ~16 bytes to keep the check fast over thousands
+// of files.
+function hasYamlFrontmatter(filePath) {
+  try {
+    var fd = fs.openSync(filePath, "r");
+    var buf = Buffer.alloc(16);
+    var n = fs.readSync(fd, buf, 0, 16, 0);
+    fs.closeSync(fd);
+    var head = buf.slice(0, n).toString("utf8").replace(/^﻿/, "");
+    // Accept either "---\n" or "---\r\n" at the very start.
+    return head.indexOf("---\n") === 0 || head.indexOf("---\r\n") === 0;
+  } catch (e) { return false; }
+}
+
 /**
  * Recursively collect every .md file under dir. Returns array of
  *   { absPath, relPath } where relPath is POSIX-style relative to dir.
- * Skips dot-prefixed dirs and SKIP_NAMES_DEFAULT entries.
+ * Skips dot-prefixed dirs, SKIP_NAMES_DEFAULT, and well-known repo docs.
+ * If `requireFrontmatter` is true, only .md files starting with `---` are
+ * kept — used for agent/command sources to filter out documentation
+ * .md files that masquerade as Claude items (e.g. ruflo's
+ * .claude/commands/agents/agent-capabilities.md, which is a reference
+ * table, not a slash command).
  */
-function walkMdFiles(dir, recursive, depth) {
+function walkMdFiles(dir, recursive, requireFrontmatter, depth) {
   depth = depth || 0;
   if (depth > 12) return [];
   var out = [];
@@ -238,7 +259,7 @@ function walkMdFiles(dir, recursive, depth) {
     var p = path.join(dir, e.name);
     if (e.isDirectory()) {
       if (!recursive) continue;
-      var children = walkMdFiles(p, true, depth + 1);
+      var children = walkMdFiles(p, true, requireFrontmatter, depth + 1);
       for (var j = 0; j < children.length; j++) {
         out.push({
           absPath: children[j].absPath,
@@ -246,12 +267,14 @@ function walkMdFiles(dir, recursive, depth) {
         });
       }
     } else if (e.isFile() && e.name.toLowerCase().endsWith(".md")) {
-      // Filter out repository-level docs that aren't agents/commands.
       var lower = e.name.toLowerCase();
+      // Filter out repository-level docs.
       if (lower === "readme.md" || lower === "changelog.md" || lower === "license.md" ||
           lower === "contributing.md" || lower === "code_of_conduct.md" ||
           lower === "security.md" || lower === "migration_summary.md" ||
           lower === "agents.md" || lower === "claude.md") continue;
+      // Optional: only items with `---` frontmatter (real agents/commands).
+      if (requireFrontmatter && !hasYamlFrontmatter(p)) continue;
       out.push({ absPath: p, relPath: e.name });
     }
   }
@@ -318,9 +341,13 @@ function discoverSourceItems(repo, source) {
     return out;
   }
 
+  // For agent/command kinds, only accept .md files with YAML frontmatter
+  // (real Claude items). Skills are folders, so this doesn't apply.
+  var needFm = (kind === "agent" || kind === "command");
+
   // flat-md: each .md file at the root of listDir
   if (source.layout === "flat-md") {
-    var mdFlat = walkMdFiles(listDir, false);
+    var mdFlat = walkMdFiles(listDir, false, needFm);
     for (var i = 0; i < mdFlat.length; i++) {
       var name = mdFlat[i].relPath;
       if (exclude.indexOf(name) !== -1) continue;
@@ -331,7 +358,7 @@ function discoverSourceItems(repo, source) {
 
   // nested-md: walk recursively, each .md becomes one item
   if (source.layout === "nested-md") {
-    var mdNested = walkMdFiles(listDir, true);
+    var mdNested = walkMdFiles(listDir, true, needFm);
     for (var k = 0; k < mdNested.length; k++) {
       var rel = mdNested[k].relPath;
       // Drop excluded top-level path segments
@@ -374,7 +401,7 @@ function discoverSourceItems(repo, source) {
           });
         }
       } else if (innerLayout === "flat-md") {
-        var subMd = walkMdFiles(innerDir, false);
+        var subMd = walkMdFiles(innerDir, false, needFm);
         for (var q = 0; q < subMd.length; q++) {
           out.push({
             srcPath: subMd[q].absPath,
@@ -384,7 +411,7 @@ function discoverSourceItems(repo, source) {
           });
         }
       } else if (innerLayout === "nested-md") {
-        var subMdN = walkMdFiles(innerDir, true);
+        var subMdN = walkMdFiles(innerDir, true, needFm);
         for (var t = 0; t < subMdN.length; t++) {
           var dashedN = subMdN[t].relPath.replace(/\//g, "-").replace(/-+/g, "-");
           out.push({
