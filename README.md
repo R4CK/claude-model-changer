@@ -342,6 +342,7 @@ The plugin registers five hooks in `hooks/hooks.json`:
 |------|--------|---------|---------|
 | `SessionStart` | `runtime-check.js` | 10s | Cached integrity check + Karpathy skills auto-sync (v3.1.1) |
 | `UserPromptSubmit` | `analyze-complexity.js` | 60s | Score & route every prompt |
+| `UserPromptSubmit` | `enforce-stats.js` | 30s | **NEW (v3.4.2):** Display session stats after every response in the chat UI |
 | `PreToolUse` (Read\|Bash) | `pre-tool-router.js` | 8s | Context bloat detection + git commit/push routing (v3.2.1) |
 | `Stop` | `enforce-stats.js` | 15s | Append the mandatory stats footer |
 | `SubagentStop` | `detect-fallback.js` | 30s | Detect if a routed subagent fell back to a different model |
