@@ -97,6 +97,12 @@
           "destPrefix": "rf-"
         },
         {
+          "kind": "skill",
+          "layout": "subfolder",
+          "skillsPath": ".claude/skills",
+          "destPrefix": "rfc-"
+        },
+        {
           "kind": "agent",
           "layout": "nested-md",
           "skillsPath": ".claude/agents",
