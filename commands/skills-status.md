@@ -30,6 +30,14 @@ ACTIVE TOTAL: 643 skills + 217 agents + 153 commands · ~28k context tokens
 Last external sync: 2026-05-31T...   Self-update check: 2026-05-31T...
 ```
 
+**Same-name conflicts (dedup):** when two repos provide an item with the same
+name, the sync keeps the **richest** one — the larger by total content bytes
+(more instructions / more supporting files = assumed more thorough); exact ties
+break to the earliest repo in config order. Every decision is logged to
+`logs/external-skills-dedup.json` and summarized in the `DEDUP:` section of the
+status output (winner repo + byte sizes + who it beat). This is fully
+reproducible: the same repos + content always resolve the same way.
+
 Key points to explain when relevant:
 - **approxContextTokens** is a rough estimate of the context overhead each repo's
   items add (Claude Code loads every skill name + description). The whole point

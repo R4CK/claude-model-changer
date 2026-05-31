@@ -97,9 +97,17 @@ function buildStatus() {
     return acc;
   }, { skills: 0, agents: 0, commands: 0, approxContextTokens: 0 });
 
+  // Dedup decisions (which repo won each same-name conflict, and why).
+  var dedup = readJsonSafe(path.join(PLUGIN_ROOT, "logs", sync.dedupReportName)) || {};
+
   return {
     repos: repos,
     activeTotals: totals,
+    dedup: {
+      strategy: dedup.strategy || "richest-wins (largest total bytes; ties -> earliest config order)",
+      conflictCount: dedup.conflictCount || 0,
+      conflicts: dedup.conflicts || []
+    },
     sync: {
       lastExternalSync: readStamp("external-skills-last-sync.json", "lastSyncIso"),
       lastSelfUpdateCheck: readStamp("self-update-last-check.json", "lastCheckIso"),
@@ -107,7 +115,7 @@ function buildStatus() {
       intervalHours: (cfg.sync && cfg.sync.intervalHours) || 24,
       enabled: !(cfg.sync && cfg.sync.enabled === false)
     },
-    hint: "Disable a heavy repo with \"enabled\": false in config/external-skills.json, then the next sync prunes its items (frees ~its approxContextTokens of context)."
+    hint: "Disable a heavy repo with \"enabled\": false in config/external-skills.json, then the next sync prunes its items. Same-name conflicts are resolved richest-wins — see logs/" + sync.dedupReportName + " for every decision."
   };
 }
 
@@ -129,6 +137,17 @@ function formatHuman(st) {
   lines.push("Last self-update check: " + (st.sync.lastSelfUpdateCheck || "never"));
   lines.push("Sync interval: " + st.sync.intervalHours + "h  (enabled: " + st.sync.enabled + ")");
   lines.push("");
+  // Dedup conflicts: which repo won each same-name clash, by content size.
+  if (st.dedup && st.dedup.conflictCount > 0) {
+    lines.push("DEDUP: " + st.dedup.conflictCount + " same-name conflict(s), kept richest:");
+    st.dedup.conflicts.slice(0, 12).forEach(function (c) {
+      var others = c.candidates.filter(function (x) { return x.repo !== c.winner.repo; })
+        .map(function (x) { return x.repo + " " + x.bytes + "b"; }).join(", ");
+      lines.push("  " + c.name + " (" + c.kind + ") → " + c.winner.repo + " " + c.winner.bytes + "b  (over " + others + ")");
+    });
+    if (st.dedup.conflicts.length > 12) lines.push("  … +" + (st.dedup.conflicts.length - 12) + " more in logs/" + sync.dedupReportName);
+    lines.push("");
+  }
   lines.push(st.hint);
   return lines.join("\n");
 }

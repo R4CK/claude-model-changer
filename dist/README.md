@@ -1,4 +1,4 @@
-# Claude Model Changer v3.9.0 - Self-Contained Installer
+# Claude Model Changer v3.10.0 - Self-Contained Installer
 
 A single-file, portable installer. No source tree required - everything is
 embedded.
