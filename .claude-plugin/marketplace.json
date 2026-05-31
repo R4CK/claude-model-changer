@@ -14,7 +14,7 @@
   "plugins": [
     {
       "name": "claude-model-changer",
-      "version": "3.10.0",
+      "version": "3.10.1",
       "icon": "./.claude-plugin/icon.svg",
       "description": "Automatic Claude model routing (haiku/sonnet/opus) based on task complexity. 30 task categories, 5 hooks, 27 slash commands, multi-language detection (EN/HU/DE) with Hungarian morphology, quota-aware downgrade, custom statusline, context bloat detector, agent teams role detection, git commit/push hooks, /undo, /whatif simulator, weekly digest, multi-profile switching, fallback feedback loop, Karpathy skills auto-sync, Prometheus telemetry export. Saves 40-60% on mixed workloads.",
       "category": "development",
