@@ -44,12 +44,11 @@ var PLUGIN_NAME = "claude-model-changer";
 // Files/dirs that constitute the installable plugin (mirrors build-installer.js).
 var DIRS_TO_INCLUDE = ["scripts", "config", "commands", "agents", "skills", "hooks", ".claude-plugin"];
 var FILES_TO_INCLUDE = ["README.md", "LICENSE", "CHANGELOG.md", "CLAUDE.md", "package.json"];
-// Never copy these from the clone.
+// Never copy these from the clone. (The clone is a git checkout of main, so it
+// contains only the plugin's own tracked files — the runtime-synced skills/
+// agents/commands are gitignored and simply aren't present. v3.9.0 removed the
+// old prefix-based skip since items now keep their original names.)
 var COPY_SKIP = [".git", ".github", "node_modules", "logs", "dist", "tests", "vscode-extension"];
-// Auto-synced skill/agent/command prefixes are NOT part of the plugin bundle;
-// the external-skills sync repopulates them. The clone won't have them anyway
-// (gitignored), but we guard defensively.
-var SYNCED_PREFIXES = ["acs-", "ecc-", "od-", "nlb-", "obs-", "sp-", "rf-", "rfp-", "karpathy-"];
 
 function log(msg)  { process.stderr.write("[self-update] " + msg + "\n"); }
 

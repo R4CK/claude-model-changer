@@ -22,22 +22,37 @@ var FILES_TO_INCLUDE = ["README.md", "LICENSE", "CHANGELOG.md", "CLAUDE.md"];
 // Exclude mutable/generated files
 var EXCLUDE = [
   "logs/", "node_modules/", ".git/", "vscode-extension/",
-  "install.js", "package.json", ".gitignore", "marketplace.json",
-  // Auto-synced items (fetched at runtime by sync-external-skills.js
-  // and sync-karpathy-skills.js). Only built-in items ship in the
-  // bundle; every prefix below is gitignored and must NOT be embedded,
-  // or the bundle balloons and reproducibility differs per dev machine.
-  "skills/acs-", "skills/ecc-", "skills/od-", "skills/nlb-", "skills/karpathy-",
-  "skills/sp-", "skills/rf-", "skills/rfp-", "skills/rfc-", "skills/obs-",
-  "agents/ecc-", "agents/rf-", "agents/rfp-",
-  "commands/ecc-", "commands/rf-", "commands/rfp-"
+  "install.js", "package.json", ".gitignore", "marketplace.json"
 ];
+
+// v3.9.0: the bundle must contain ONLY git-tracked files. The auto-synced
+// skills/agents/commands keep their ORIGINAL repo names now (no prefix to
+// pattern-match), but they are all UNTRACKED (gitignored). So build an
+// allowlist from `git ls-files` and bundle only those — keeping the bundle
+// byte-identical between a clean CI checkout (no synced items) and a dev
+// worktree (which has hundreds of synced items on disk). If git is unavailable
+// the set is null and we fall back to EXCLUDE-only (clean-checkout assumption).
+var GIT_TRACKED = (function () {
+  try {
+    var r = require("child_process").spawnSync("git", ["ls-files"], { cwd: ROOT, encoding: "utf8" });
+    if (r.status !== 0 || !r.stdout) return null;
+    var set = Object.create(null);
+    r.stdout.split(/\r?\n/).forEach(function (l) { if (l) set[l.trim()] = true; });
+    return set;
+  } catch (e) { return null; }
+})();
 
 function shouldExclude(relPath) {
   for (var i = 0; i < EXCLUDE.length; i++) {
     if (relPath.indexOf(EXCLUDE[i]) !== -1) return true;
   }
   return false;
+}
+
+// True if a FILE path should be bundled (git-tracked when the set is available).
+function isTracked(relPath) {
+  if (!GIT_TRACKED) return true;       // no git → clean-checkout assumption
+  return !!GIT_TRACKED[relPath];
 }
 
 // Text file extensions whose line endings get normalized to LF before base64
@@ -86,6 +101,8 @@ function collectFiles(dir, base) {
     if (stat.isDirectory()) {
       results = results.concat(collectFiles(fullPath, relPath));
     } else {
+      // v3.9.0: bundle only git-tracked files (skips runtime-synced items).
+      if (!isTracked(relPath)) continue;
       var bundled = readFileForBundle(fullPath);
       results.push({
         path: relPath,

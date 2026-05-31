@@ -37,25 +37,20 @@ claude-modell-changer-install.js
 
 # Auto-synced external skills/agents/commands (managed by
 # scripts/sync-external-skills.js and scripts/sync-karpathy-skills.js).
-# Only the built-in items ship with the repo; every prefixed item below
-# is pulled at runtime. See config/external-skills.json for the full
-# repo list and prefix scheme.
-skills/acs-*/
-skills/ecc-*/
-skills/od-*/
-skills/nlb-*/
-skills/karpathy-*/
-skills/sp-*/
-skills/rf-*/
-skills/rfp-*/
-skills/rfc-*/
-skills/obs-*/
-agents/ecc-*
-agents/rf-*
-agents/rfp-*
-commands/ecc-*
-commands/rf-*
-commands/rfp-*
+# v3.9.0: items keep their ORIGINAL repo names (no prefixes), so we can't
+# pattern-match them. Instead we ignore EVERYTHING under skills/agents/commands
+# and the only built-ins (model-router, the three worker agents, the plugin's
+# own commands) stay tracked — git never ignores already-tracked files, so this
+# only hides the runtime-synced (untracked) items. New synced items are ignored
+# automatically; provenance is in logs/external-skills-manifest.json.
+skills/*/
+!skills/model-router/
+agents/*.md
+!agents/haiku-worker.md
+!agents/opus-worker.md
+!agents/sonnet-worker.md
+commands/*.md
+logs/external-skills-manifest.json
 logs/external-skills-last-sync.json
 logs/karpathy-last-sync.json
 

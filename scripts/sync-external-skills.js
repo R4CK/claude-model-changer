@@ -323,15 +323,19 @@ function getRepoSources(repo) {
  */
 function discoverSourceItems(repo, source) {
   var repoDir = path.join(getCacheRoot(), repo.name);
-  var prefix = source.destPrefix || "";
   var exclude = source.excludeFolders || [];
   var kind = source.kind || "skill";
   var out = [];
 
+  // v3.9.0: items keep their ORIGINAL names. destName = the source basename
+  // (skill folder name, or agent/command file basename) — never a prefix and
+  // never a path-flattened form. Collisions across repos/sources are resolved
+  // later by first-wins dedup in installRepo().
+
   // root-single
   if (source.layout === "root-single") {
     var basePath = source.skillsPath ? path.join(repoDir, source.skillsPath) : repoDir;
-    var destName = source.destFolderName || (prefix + repo.name);
+    var destName = source.destFolderName || repo.name;
     out.push({ srcPath: basePath, destName: destName, kind: kind, isFile: false });
     return out;
   }
@@ -357,35 +361,36 @@ function discoverSourceItems(repo, source) {
   // (real Claude items). Skills are folders, so this doesn't apply.
   var needFm = (kind === "agent" || kind === "command");
 
-  // flat-md: each .md file at the root of listDir
+  // flat-md: each .md file at the root of listDir (original filename)
   if (source.layout === "flat-md") {
     var mdFlat = walkMdFiles(listDir, false, needFm);
     for (var i = 0; i < mdFlat.length; i++) {
       var name = mdFlat[i].relPath;
       if (exclude.indexOf(name) !== -1) continue;
-      out.push({ srcPath: mdFlat[i].absPath, destName: prefix + name, kind: kind, isFile: true });
+      out.push({ srcPath: mdFlat[i].absPath, destName: name, kind: kind, isFile: true });
     }
     return out;
   }
 
-  // nested-md: walk recursively, each .md becomes one item
+  // nested-md: walk recursively; destName = the file's ORIGINAL basename
+  // (not the flattened path). Same-basename files in different subdirs collide
+  // and are deduped first-wins later — acceptable, since the item identity is
+  // its frontmatter name, not the on-disk filename.
   if (source.layout === "nested-md") {
     var mdNested = walkMdFiles(listDir, true, needFm);
     for (var k = 0; k < mdNested.length; k++) {
       var rel = mdNested[k].relPath;
-      // Drop excluded top-level path segments
       var top = rel.indexOf("/") === -1 ? rel : rel.slice(0, rel.indexOf("/"));
       if (exclude.indexOf(top) !== -1) continue;
-      // Flatten path: "sub/dir/foo.md" -> "<prefix>sub-dir-foo.md"
-      var dashed = rel.replace(/\//g, "-").replace(/-+/g, "-");
-      out.push({ srcPath: mdNested[k].absPath, destName: prefix + dashed, kind: kind, isFile: true });
+      out.push({ srcPath: mdNested[k].absPath, destName: path.basename(rel), kind: kind, isFile: true });
     }
     return out;
   }
 
-  // plugin-multi: iterate <listDir>/<plugin>/<innerPath>/...
+  // plugin-multi: iterate <listDir>/<plugin>/<innerPath>/... ; items keep their
+  // original basenames (no plugin-name prefix).
   if (source.layout === "plugin-multi") {
-    var inner = source.innerPath || "";        // e.g. "agents", "commands", "skills"
+    var inner = source.innerPath || "";
     var innerLayout = source.innerLayout || "subfolder";
     var pluginEntries;
     try { pluginEntries = fs.readdirSync(listDir, { withFileTypes: true }); }
@@ -398,47 +403,30 @@ function discoverSourceItems(repo, source) {
       if (exclude.indexOf(p.name) !== -1) continue;
       var innerDir = inner ? path.join(listDir, p.name, inner) : path.join(listDir, p.name);
       if (!fs.existsSync(innerDir)) continue;
-      var perPluginPrefix = prefix + p.name + "-";
       if (innerLayout === "subfolder") {
         var subEntries = fs.readdirSync(innerDir, { withFileTypes: true });
         for (var n = 0; n < subEntries.length; n++) {
           var se = subEntries[n];
           if (!se.isDirectory()) continue;
           if (se.name.charAt(0) === ".") continue;
-          out.push({
-            srcPath: path.join(innerDir, se.name),
-            destName: perPluginPrefix + se.name,
-            kind: kind,
-            isFile: false
-          });
+          out.push({ srcPath: path.join(innerDir, se.name), destName: se.name, kind: kind, isFile: false });
         }
       } else if (innerLayout === "flat-md") {
         var subMd = walkMdFiles(innerDir, false, needFm);
         for (var q = 0; q < subMd.length; q++) {
-          out.push({
-            srcPath: subMd[q].absPath,
-            destName: perPluginPrefix + subMd[q].relPath,
-            kind: kind,
-            isFile: true
-          });
+          out.push({ srcPath: subMd[q].absPath, destName: subMd[q].relPath, kind: kind, isFile: true });
         }
       } else if (innerLayout === "nested-md") {
         var subMdN = walkMdFiles(innerDir, true, needFm);
         for (var t = 0; t < subMdN.length; t++) {
-          var dashedN = subMdN[t].relPath.replace(/\//g, "-").replace(/-+/g, "-");
-          out.push({
-            srcPath: subMdN[t].absPath,
-            destName: perPluginPrefix + dashedN,
-            kind: kind,
-            isFile: true
-          });
+          out.push({ srcPath: subMdN[t].absPath, destName: path.basename(subMdN[t].relPath), kind: kind, isFile: true });
         }
       }
     }
     return out;
   }
 
-  // subfolder or root-multi: each child folder = one item
+  // subfolder or root-multi: each child folder = one item (original folder name)
   var entries = fs.readdirSync(listDir, { withFileTypes: true });
   entries.sort(function (a, b) { return a.name < b.name ? -1 : a.name > b.name ? 1 : 0; });
   for (var i2 = 0; i2 < entries.length; i2++) {
@@ -448,78 +436,101 @@ function discoverSourceItems(repo, source) {
     if (exclude.indexOf(e2.name) !== -1) continue;
     var folder = path.join(listDir, e2.name);
     if (source.layout === "root-multi" && !hasSkillMarker(folder)) continue;
-    out.push({ srcPath: folder, destName: prefix + e2.name, kind: kind, isFile: false });
+    out.push({ srcPath: folder, destName: e2.name, kind: kind, isFile: false });
   }
   return out;
 }
 
-/**
- * Install one source's discovered items into the plugin's appropriate
- * dest dir. Returns array of installed dest names.
- */
-function installSourceItems(repo, source, pluginRoot) {
-  var items = discoverSourceItems(repo, source);
-  if (!items.length) return [];
+// Read an agent/command .md file's frontmatter `name:` (its real identity for
+// agents). Falls back to the filename without extension.
+function readItemName(filePath, destName) {
+  try {
+    var fd = fs.openSync(filePath, "r");
+    var buf = Buffer.alloc(2048);
+    var n = fs.readSync(fd, buf, 0, 2048, 0);
+    fs.closeSync(fd);
+    var head = buf.slice(0, n).toString("utf8").replace(/^﻿/, "");
+    var m = head.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+    if (m) {
+      var nm = m[1].match(/^name:[ \t]*["']?([^"'\r\n]+)["']?[ \t]*$/m);
+      if (nm) return nm[1].trim();
+    }
+  } catch (e) {}
+  return destName.replace(/\.md$/i, "");
+}
 
-  var installed = [];
-  for (var i = 0; i < items.length; i++) {
-    var it = items[i];
-    var destDir = path.join(pluginRoot, KIND_TO_DIR[it.kind] || "skills");
-    if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
-    var dest = path.join(destDir, it.destName);
-    if (it.isFile) {
-      // File replacement: simple overwrite (single small .md, near-atomic).
-      try { fs.rmSync(dest, { force: true }); } catch (e) {}
-      if (copyFileSafe(it.srcPath, dest)) installed.push(it.destName);
-    } else {
-      // v3.6.2: copy into a temp dir FIRST, then swap. Previously we did
-      // `rmrf(dest)` then copy — a mid-copy failure left a half-populated dir
-      // that destItemsPresent() (top-level existence only) treats as complete,
-      // so the next run smart-skips it and the corruption persists forever.
-      // Copying to a sibling temp then renaming keeps the existing install
-      // intact on failure and makes the visible swap atomic.
-      var tmpDest = dest + ".tmp-" + process.pid + "-" + Date.now();
-      try {
-        rmrf(tmpDest);
-        copyDirRecursive(it.srcPath, tmpDest, SKIP_NAMES_DEFAULT);
-        rmrf(dest);
-        fs.renameSync(tmpDest, dest);
-        installed.push(it.destName);
-      } catch (e) {
-        rmrf(tmpDest); // clean up partial temp; existing dest is untouched
-        warn(repo.name, "copy failed for " + it.destName + ": " + (e && e.message || e));
+var MANIFEST_NAME = "external-skills-manifest.json";
+
+function manifestPath(pluginRoot) {
+  return path.join(pluginRoot, "logs", MANIFEST_NAME);
+}
+
+// Identity used to dedup an item. Skills/commands key off their dest name
+// (folder/filename); agents key off their frontmatter `name:` (what Claude Code
+// actually uses — two agents with the same name silently collide).
+function itemIdentity(it) {
+  if (it.kind === "agent") return readItemName(it.srcPath, it.destName).toLowerCase();
+  return it.destName.toLowerCase();
+}
+
+function copyItem(it, pluginRoot, repoName) {
+  var destDir = path.join(pluginRoot, KIND_TO_DIR[it.kind] || "skills");
+  if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+  var dest = path.join(destDir, it.destName);
+  if (it.isFile) {
+    try { fs.rmSync(dest, { force: true }); } catch (e) {}
+    return copyFileSafe(it.srcPath, dest);
+  }
+  // Directory: atomic temp+swap (see v3.6.2).
+  var tmpDest = dest + ".tmp-" + process.pid + "-" + Date.now();
+  try {
+    rmrf(tmpDest);
+    copyDirRecursive(it.srcPath, tmpDest, SKIP_NAMES_DEFAULT);
+    rmrf(dest);
+    fs.renameSync(tmpDest, dest);
+    return true;
+  } catch (e) {
+    rmrf(tmpDest);
+    warn(repoName, "copy failed for " + it.destName + ": " + (e && e.message || e));
+    return false;
+  }
+}
+
+/**
+ * Install all of a repo's items into pluginRoot, honoring the shared `dedup`
+ * context (first-wins across repos, in config order). Records what this repo
+ * actually installed into `manifestEntry`. Returns per-kind install counts.
+ */
+function installRepo(repo, pluginRoot, dedup, manifestEntry) {
+  var sources = getRepoSources(repo);
+  var totals = { skill: 0, agent: 0, command: 0, hook: 0, skipped: 0 };
+  for (var s = 0; s < sources.length; s++) {
+    var items = discoverSourceItems(repo, sources[s]);
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i];
+      var kind = it.kind || "skill";
+      if (!dedup[kind]) dedup[kind] = {};
+      var id = itemIdentity(it);
+      if (dedup[kind][id]) { totals.skipped++; continue; }   // a duplicate name — first repo wins
+      if (copyItem(it, pluginRoot, repo.name)) {
+        dedup[kind][id] = repo.name;
+        totals[kind] = (totals[kind] || 0) + 1;
+        if (manifestEntry) {
+          if (!manifestEntry[kind]) manifestEntry[kind] = [];
+          manifestEntry[kind].push(it.destName);
+        }
       }
     }
   }
-  return installed;
-}
-
-/**
- * True iff every expected item for every source of `repo` already exists
- * at its destination path.
- */
-function destItemsPresent(repo, pluginRoot) {
-  var sources = getRepoSources(repo);
-  for (var s = 0; s < sources.length; s++) {
-    var items = discoverSourceItems(repo, sources[s]);
-    if (!items.length) continue;
-    for (var i = 0; i < items.length; i++) {
-      var destDir = path.join(pluginRoot, KIND_TO_DIR[items[i].kind] || "skills");
-      if (!fs.existsSync(path.join(destDir, items[i].destName))) return false;
-    }
-  }
-  return true;
-}
-
-function installRepo(repo, pluginRoot) {
-  var sources = getRepoSources(repo);
-  var totals = { skill: 0, agent: 0, command: 0, hook: 0 };
-  for (var i = 0; i < sources.length; i++) {
-    var installed = installSourceItems(repo, sources[i], pluginRoot);
-    var kind = sources[i].kind || "skill";
-    totals[kind] = (totals[kind] || 0) + installed.length;
-  }
   return totals;
+}
+
+// Back-compat shim for callers/tests that installed a single source.
+function installSourceItems(repo, source, pluginRoot) {
+  var dedup = {}, entry = {};
+  installRepo({ name: repo.name, sources: [source] }, pluginRoot, dedup, entry);
+  var kind = source.kind || "skill";
+  return (entry[kind] || []);
 }
 
 function totalsToString(totals) {
@@ -528,64 +539,45 @@ function totalsToString(totals) {
   if (totals.agent)   parts.push(totals.agent + " agent(s)");
   if (totals.command) parts.push(totals.command + " command(s)");
   if (totals.hook)    parts.push(totals.hook + " hook(s)");
+  if (totals.skipped) parts.push(totals.skipped + " dup(s) skipped");
   return parts.length ? parts.join(", ") : "0 item(s)";
 }
 
-// v3.8.0 (curation): all prefixes the sync has ever managed. Used so the prune
-// step never touches built-in items (model-router, haiku-worker, the plugin's
-// own commands) — only items under one of these prefixes are candidates.
-var MANAGED_PREFIXES = ["acs-", "ecc-", "od-", "nlb-", "obs-", "sp-", "rf-", "rfp-", "rfc-"];
-
-// The dest prefixes a single repo "owns" (from its sources' destPrefix, or the
-// leading "xxx-" segment of a destFolderName).
-function ownedPrefixes(repo) {
-  var out = [];
-  var sources = getRepoSources(repo);
-  for (var i = 0; i < sources.length; i++) {
-    var s = sources[i];
-    if (s.destPrefix) {
-      if (out.indexOf(s.destPrefix) === -1) out.push(s.destPrefix);
-    } else if (s.destFolderName) {
-      var m = s.destFolderName.match(/^([a-z0-9]+-)/i);
-      if (m && out.indexOf(m[1]) === -1) out.push(m[1]);
-    }
-  }
-  return out;
-}
-
 /**
- * Curation prune: remove synced items whose prefix belongs to a DISABLED or
- * REMOVED repo, so setting `"enabled": false` on a heavy repo actually frees
- * the ~per-skill context Claude Code loads. Only items under a MANAGED_PREFIXES
- * prefix are ever candidates — built-in items are never touched.
- * Returns the count removed.
+ * Reconcile the installed items with a freshly-built manifest. Any item that
+ * was previously synced (present in the old or new manifest) but is NOT in the
+ * new manifest's active set is removed — this covers disabled repos, items
+ * deleted upstream, and ownership changes. Built-in items (model-router, the
+ * worker agents, the plugin's own commands) are never in any manifest, so they
+ * are never touched. Returns the count removed.
  */
-function pruneInactive(pluginRoot, cfg) {
-  var repos = (cfg && cfg.repos) || [];
-  var active = {}, managed = {};
-  for (var i = 0; i < repos.length; i++) {
-    var pres = ownedPrefixes(repos[i]);
-    for (var j = 0; j < pres.length; j++) {
-      managed[pres[j]] = true;
-      if (repos[i].enabled) active[pres[j]] = true;
-    }
+function reconcile(pluginRoot, oldManifest, newManifest) {
+  var managed = { skills: {}, agents: {}, commands: {}, hooks: {} };
+  var active = { skills: {}, agents: {}, commands: {}, hooks: {} };
+  var KIND_PLURAL = { skill: "skills", agent: "agents", command: "commands", hook: "hooks" };
+
+  function absorb(manifest, into) {
+    Object.keys(manifest || {}).forEach(function (repoName) {
+      var entry = manifest[repoName] || {};
+      Object.keys(entry).forEach(function (kind) {
+        var plural = KIND_PLURAL[kind] || kind;
+        (entry[kind] || []).forEach(function (name) { into[plural][name] = true; });
+      });
+    });
   }
-  for (var k = 0; k < MANAGED_PREFIXES.length; k++) managed[MANAGED_PREFIXES[k]] = true;
+  absorb(oldManifest, managed);
+  absorb(newManifest, managed);
+  absorb(newManifest, active);
 
   var removed = 0;
-  ["skills", "agents", "commands", "hooks"].forEach(function (kindDir) {
-    var dir = path.join(pluginRoot, kindDir);
-    if (!fs.existsSync(dir)) return;
-    var entries;
-    try { entries = fs.readdirSync(dir); } catch (e) { return; }
-    entries.forEach(function (name) {
-      var pfx = null;
-      // Longest-prefix-first so "rfp-" wins over a hypothetical "rf" overlap.
-      var keys = Object.keys(managed).sort(function (a, b) { return b.length - a.length; });
-      for (var q = 0; q < keys.length; q++) { if (name.indexOf(keys[q]) === 0) { pfx = keys[q]; break; } }
-      if (!pfx) return;          // not a managed item — keep (model-router, built-ins)
-      if (active[pfx]) return;   // owned by an enabled repo — keep
-      try { fs.rmSync(path.join(dir, name), { recursive: true, force: true }); removed++; } catch (e) {}
+  Object.keys(managed).forEach(function (plural) {
+    var dir = path.join(pluginRoot, plural);
+    Object.keys(managed[plural]).forEach(function (name) {
+      if (active[plural][name]) return;           // still wanted — keep
+      var p = path.join(dir, name);
+      if (fs.existsSync(p)) {
+        try { fs.rmSync(p, { recursive: true, force: true }); removed++; } catch (e) {}
+      }
     });
   });
   return removed;
@@ -612,6 +604,51 @@ function resolvePluginRoot(arg) {
   return abs;
 }
 
+// A small signature of the config that affects the install outcome, so a config
+// change (e.g. a repo disabled, a source edited) forces a re-sync even when no
+// remote HEAD moved.
+function configSignature(cfg) {
+  try {
+    var repos = (cfg.repos || []).map(function (r) {
+      return { name: r.name, enabled: r.enabled !== false, url: r.url, sources: r.sources || r.layout };
+    });
+    return JSON.stringify(repos);
+  } catch (e) { return ""; }
+}
+
+/**
+ * Full install: walk enabled repos in config order, install with first-wins
+ * dedup, reconcile against the previous manifest, and persist the new manifest.
+ */
+function fullInstall(cfg, pluginRoot) {
+  var oldManifest = readJsonSafe(manifestPath(pluginRoot)) || {};
+  delete oldManifest._configSignature;
+  var newManifest = {};
+  var dedup = {};
+  var totals = { skill: 0, agent: 0, command: 0, hook: 0, skipped: 0 };
+
+  (cfg.repos || []).forEach(function (repo) {
+    if (!repo || repo.enabled === false) return;
+    var entry = {};
+    var t = installRepo(repo, pluginRoot, dedup, entry);
+    newManifest[repo.name] = entry;
+    ["skill", "agent", "command", "hook", "skipped"].forEach(function (k) { totals[k] += (t[k] || 0); });
+    log(repo.name, "installed " + totalsToString(t));
+  });
+
+  var removed = reconcile(pluginRoot, oldManifest, newManifest);
+  if (removed > 0) log("reconcile", "removed " + removed + " stale/inactive item(s)");
+
+  try {
+    var dir = path.dirname(manifestPath(pluginRoot));
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    newManifest._configSignature = configSignature(cfg);
+    fs.writeFileSync(manifestPath(pluginRoot), JSON.stringify(newManifest, null, 2), "utf8");
+  } catch (e) { warn("manifest", "write failed: " + e.message); }
+
+  return totals;
+}
+
 function main() {
   var args = parseArgs(process.argv.slice(2));
 
@@ -620,68 +657,43 @@ function main() {
 
   var pluginRoot = resolvePluginRoot(args.dest);
 
-  // Prune-only mode: remove inactive items and stop.
-  if (args.prune === true && args.dest && pluginRoot) {
-    var prunedOnly = pruneInactive(pluginRoot, cfg);
-    log("prune", "removed " + prunedOnly + " inactive item(s)");
-    return;
-  }
-
-  var repos = (cfg.repos || []).filter(function (r) {
-    if (!r || !r.enabled) return false;
-    if (args.only && r.name !== args.only) return false;
-    return true;
+  // 1. Refresh every enabled repo's cache (cheap HEAD check). Track if anything
+  //    actually changed remotely.
+  var anyChanged = false, anyCache = false;
+  (cfg.repos || []).forEach(function (repo) {
+    if (!repo || repo.enabled === false) return;
+    if (args.only && repo.name !== args.only) return;
+    var res = syncRepoCache(repo, { force: args.force });
+    if (res.ok) anyCache = true;
+    if (res.changed) anyChanged = true;
+    if (!pluginRoot) log(repo.name, res.reason);
   });
 
-  if (!repos.length) {
-    log("init", "no enabled repos to sync");
-    // Still prune (config may have just disabled everything).
-    if (pluginRoot && args.prune !== false && !args.only) {
-      var pn = pruneInactive(pluginRoot, cfg);
-      if (pn > 0) log("prune", "removed " + pn + " inactive item(s)");
-    }
+  if (!pluginRoot) {
+    log("done", "cache refreshed" + (anyChanged ? " (some repos changed)" : ""));
     return;
   }
-  var totalInstalled = { skill: 0, agent: 0, command: 0, hook: 0 };
-  var totalSkipped = 0;
 
-  for (var i = 0; i < repos.length; i++) {
-    var repo = repos[i];
-    var res = syncRepoCache(repo, { force: args.force });
+  // 2. Decide whether a (re)install is needed. Dedup is global + order-sensitive,
+  //    so any change means a full re-walk. Triggers: a repo changed, --force,
+  //    --prune, the manifest is missing, or the config signature changed.
+  var oldM = readJsonSafe(manifestPath(pluginRoot)) || {};
+  var sigChanged = oldM._configSignature !== configSignature(cfg);
+  var manifestMissing = !fs.existsSync(manifestPath(pluginRoot));
+  var needInstall = anyChanged || args.force || args.prune === true || manifestMissing || sigChanged;
 
-    if (!res.ok) {
-      warn(repo.name, "skipped: " + res.reason);
-      continue;
-    }
-
-    if (!pluginRoot) {
-      log(repo.name, res.reason);
-      continue;
-    }
-
-    if (!res.changed && !args.force && destItemsPresent(repo, pluginRoot)) {
-      totalSkipped++;
-      continue;
-    }
-
-    var t = installRepo(repo, pluginRoot);
-    totalInstalled.skill   += t.skill;
-    totalInstalled.agent   += t.agent;
-    totalInstalled.command += t.command;
-    totalInstalled.hook    += t.hook;
-    log(repo.name, "installed " + totalsToString(t) + " [" + res.reason + "]");
+  if (!needInstall) {
+    log("done", "up to date; no repo changed");
+    return;
   }
 
-  // Curation: after a FULL sync (no --repo filter, prune not disabled), remove
-  // items belonging to disabled/removed repos so config changes take effect.
-  if (pluginRoot && !args.only && args.prune !== false) {
-    var pruned = pruneInactive(pluginRoot, cfg);
-    if (pruned > 0) log("prune", "removed " + pruned + " inactive item(s)");
+  if (!anyCache) {
+    warn("init", "no repo caches available (offline?) — skipping install");
+    return;
   }
 
-  if (pluginRoot) {
-    log("done", "installed " + totalsToString(totalInstalled) + "; " + totalSkipped + " repo(s) up-to-date");
-  }
+  var totals = fullInstall(cfg, pluginRoot);
+  log("done", "installed " + totalsToString(totals));
 }
 
 if (require.main === module) {
@@ -695,13 +707,14 @@ module.exports = {
   discoverSourceItems: discoverSourceItems,
   installSourceItems: installSourceItems,
   installRepo: installRepo,
-  destItemsPresent: destItemsPresent,
+  reconcile: reconcile,
+  readItemName: readItemName,
+  itemIdentity: itemIdentity,
+  fullInstall: fullInstall,
   remoteHeadSha: remoteHeadSha,
   localHeadSha: localHeadSha,
   getCacheRoot: getCacheRoot,
   resolvePluginRoot: resolvePluginRoot,
   walkMdFiles: walkMdFiles,
-  ownedPrefixes: ownedPrefixes,
-  pruneInactive: pruneInactive,
-  MANAGED_PREFIXES: MANAGED_PREFIXES
+  manifestPath: manifestPath
 };
