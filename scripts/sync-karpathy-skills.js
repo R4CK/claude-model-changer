@@ -69,17 +69,38 @@ function hasGit() {
   return r.status === 0;
 }
 
-function copyDirRecursive(src, dest, skipNames) {
+function copyDirRecursive(src, dest, skipNames, depth) {
   skipNames = skipNames || [];
+  depth = depth || 0;
+  if (depth > 32) return;
   if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
-  var entries = fs.readdirSync(src, { withFileTypes: true });
+  var entries;
+  try { entries = fs.readdirSync(src, { withFileTypes: true }); }
+  catch (e) { return; }
   for (var i = 0; i < entries.length; i++) {
     var e = entries[i];
     if (skipNames.indexOf(e.name) !== -1) continue;
     var s = path.join(src, e.name);
     var d = path.join(dest, e.name);
-    if (e.isDirectory()) copyDirRecursive(s, d, skipNames);
-    else fs.copyFileSync(s, d);
+    // v3.6.2: handle symlinks. Previously a symlinked directory hit the `else`
+    // branch and `fs.copyFileSync` threw (EISDIR), aborting the whole karpathy
+    // sync. Dereference links whose target stays within the source tree; skip
+    // links that escape it (defensive against a crafted upstream repo).
+    if (e.isSymbolicLink()) {
+      var real;
+      try { real = fs.realpathSync(s); } catch (err) { continue; }
+      var srcRoot;
+      try { srcRoot = fs.realpathSync(src); } catch (err) { srcRoot = src; }
+      if (real.indexOf(srcRoot) !== 0) continue; // link escapes src — skip
+      var st;
+      try { st = fs.statSync(real); } catch (err) { continue; }
+      if (st.isDirectory()) copyDirRecursive(real, d, skipNames, depth + 1);
+      else { try { fs.copyFileSync(real, d); } catch (err) {} }
+    } else if (e.isDirectory()) {
+      copyDirRecursive(s, d, skipNames, depth + 1);
+    } else if (e.isFile()) {
+      try { fs.copyFileSync(s, d); } catch (err) {}
+    }
   }
 }
 

@@ -32,11 +32,14 @@ function detectLanguage(prompt) {
     "bitte", "kannst", "können", "soll", "sollte", "muss", "mach",
     "füge", "ändere", "lösche", "finde", "suche", "erstelle",
     "implementiere", "überprüfe", "aktualisiere", "korrigiere",
-    "behebe", "refaktoriere", "teste", "optimiere", "datei",
+    "refaktoriere", "teste", "optimiere", "datei",
     "fehler", "funktion", "klasse", "methode", "variable",
     "tippfehler", "hinzu", "entferne",
     // v3.4.0 (DE): IT-jargon stems + common short forms so the language
     // detector still triggers on terse prompts like "Bug beheben".
+    // v3.6.2: removed a duplicate "behebe" that previously lived in the line
+    // above too — it double-counted deCount and could flip detection on a
+    // single German word.
     "behebe", "beheben", "bug", "lasttest", "skalierung", "schnittstelle",
     "modul", "komponente", "konfiguration", "leistung", "speicher",
     "audit", "schritt", "untersuche", "untersuchen", "auflisten",

@@ -1,6 +1,6 @@
 {
   "name": "claude-model-changer",
-  "version": "3.6.1",
+  "version": "3.6.2",
   "description": "Automatically routes tasks to the appropriate Claude model (haiku/sonnet/opus) based on complexity analysis. 30 task categories, multi-language (EN/HU/DE), LLM-fallback learning, anomaly detection, adaptive weights. Saves 40-60% on mixed workloads.",
   "author": {
     "name": "R4CK",

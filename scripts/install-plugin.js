@@ -245,10 +245,11 @@ function main() {
     log("Created plugins directory");
   }
 
-  var cacheBase = path.join(pluginsDir, "cache", "neon-local", PLUGIN_NAME);
-  if (!fs.existsSync(cacheBase)) {
-    fs.mkdirSync(cacheBase, { recursive: true });
-  }
+  // v3.6.2: removed a dead `cacheBase` block here that hardcoded the
+  // marketplace owner to "neon-local" and mkdir'd an empty dir that was never
+  // populated (the copy below targets `cacheDir`, not this path). On machines
+  // whose owner != neon-local it created a stray cache tree. The real cleanup
+  // path uses PLUGIN_OWNER (see cleanupOldVersions call near end of install()).
 
   // Copy plugin directories to cache
   var dirs = ["scripts", "config", "commands", "agents", "skills", "hooks", ".claude-plugin"];

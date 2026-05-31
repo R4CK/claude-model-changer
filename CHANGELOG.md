@@ -1,5 +1,62 @@
 # Changelog
 
+## v3.6.2 — Audit hardening (concurrency, reproducibility, robustness)
+
+A full read-through of the plugin (5 hooks + lib layer + sync/installer)
+surfaced a handful of edge-case bugs. None changed routing behavior; all
+are robustness / correctness fixes. Architecture remains sound.
+
+### 🟡 Concurrency — `detect-fallback.js`
+The SubagentStop hook incremented the shared `session-state.json` counters
+via a bespoke `.lock` spin-lock + raw read-modify-write, while the
+UserPromptSubmit writer (`session-utils.saveSessionState`) used
+`atomicMergeJson` with **no** lock. Two different mechanisms on the same
+file → an interleave could silently drop a subagent counter increment.
+Now detect-fallback routes its increment through `atomicMergeJson`, whose
+mergeFn increments from the freshest disk state and re-runs on a
+concurrent-write retry. Verified with a 10-way concurrent-increment test
+(result: exactly 10, zero lost updates). The lockfile and the `sleep`
+dependency are gone.
+
+### 🟡 Reproducibility — `build-installer.js`
+The generated `install.js` banner embedded `new Date()` (the build date).
+A CI re-run on a different UTC day than the committed `dist/install.js`
+would produce a different byte and fail the "bundle is reproducible"
+check. The banner is now pinned to the plugin version (already
+deterministic). This was a latent time-bomb — it only passed because every
+release so far built + committed + ran CI on the same UTC day.
+
+### 🟡 Robustness — `stats.js`
+`getQualityStats` and `getTuneAnalysis` did `sum += e.rating` with no
+numeric guard; a single malformed rating in the quality log would make the
+average `NaN` and poison every `/stats`/`/tune` readout. Now guarded with
+`Number()` + `isFinite()`. Also: `getTuneAnalysis` counted equal-tier
+overrides (e.g. sonnet→sonnet) as downgrades — now ignored.
+
+### 🟡 Robustness — `sync-external-skills.js`
+Directory installs did `rmrf(dest)` then copy; a mid-copy failure left a
+half-populated skill that `destItemsPresent` (top-level check) treats as
+complete, so smart-skip would never repair it. Now copies into a sibling
+temp dir and atomically renames — the existing install survives a failed
+copy and the visible swap is atomic. Added a symlink-escape guard: links
+are dereferenced only when their target stays within the external cache
+root (preserves ui-ux-pro-max's in-repo symlinks; blocks a crafted repo
+from pulling host files like `~/.ssh` into the plugin).
+
+### 🟢 Minor
+- `sync-karpathy-skills.js`: `copyDirRecursive` now handles symlinks +
+  per-entry errors (previously a symlinked dir threw `EISDIR` and aborted
+  the whole karpathy sync) and is depth-capped at 32.
+- `install-plugin.js`: removed a dead `cacheBase` block that hardcoded the
+  marketplace owner to `neon-local` and mkdir'd an unused dir (the real
+  path uses the dynamic `PLUGIN_OWNER`).
+- `scoring.js`: removed a duplicate `"behebe"` in the German word list that
+  double-counted and could flip language detection on a single word.
+
+All 79 unit tests pass; routing smoke-tests (EN/HU/DE + opus) unchanged.
+
+---
+
 ## v3.6.1 — Installer cleans up orphan version dirs
 
 The installer's `manualRegister()` previously wrote the new version
