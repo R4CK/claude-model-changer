@@ -571,6 +571,11 @@
     "intervalHours": 24,
     "background": true
   },
+  "selfUpdate": {
+    "enabled": true,
+    "intervalHours": 24,
+    "background": true
+  },
   "quotaAware": {
     "enabled": true,
     "opusDowngradeThreshold": 0.8,

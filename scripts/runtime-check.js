@@ -45,6 +45,38 @@ try {
   if (extChild && typeof extChild.unref === "function") extChild.unref();
 } catch (e) { /* never block session start */ }
 
+// v3.7.0: plugin self-update — keeps the plugin's OWN code current with GitHub
+// (distinct from the skills sync above). Throttled (default 24h), backgrounded,
+// and a no-op unless GitHub's main package.json version is newer than the
+// running install. Only acts on an installed cache copy, never a dev checkout.
+// Config in config/task-routing.json -> "selfUpdate".
+try {
+  var updChild = cp.spawn(process.execPath, [path.join(__dirname, "self-update-session-sync.js")], {
+    detached: true,
+    stdio: "ignore",
+    windowsHide: true
+  });
+  if (updChild && typeof updChild.unref === "function") updChild.unref();
+} catch (e) { /* never block session start */ }
+
+// v3.7.0: one-time "plugin updated" notice. The self-update writes a marker
+// into the NEW version dir's logs/; the first session running that version
+// surfaces it once, then deletes it. Guarded so a stale marker from a
+// different version never shows.
+try {
+  var fsU = require("fs");
+  var markerPath = path.join(PLUGIN_ROOT, "logs", "self-update-applied.json");
+  if (fsU.existsSync(markerPath)) {
+    var marker = JSON.parse(fsU.readFileSync(markerPath, "utf8").replace(/^﻿/, ""));
+    var pkgU = JSON.parse(fsU.readFileSync(path.join(PLUGIN_ROOT, "package.json"), "utf8").replace(/^﻿/, ""));
+    if (marker && marker.to && pkgU && pkgU.version === marker.to) {
+      process.stdout.write("[claude-model-changer] ✓ Plugin self-updated " +
+        (marker.from || "?") + " → " + marker.to + " (now active).\n");
+    }
+    try { fsU.unlinkSync(markerPath); } catch (e) {}
+  }
+} catch (e) { /* never block session start */ }
+
 try {
   var result = cp.spawnSync(process.execPath, [PREFLIGHT, "--runtime", "--json", "--quiet"], {
     encoding: "utf8",

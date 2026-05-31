@@ -1,5 +1,70 @@
 # Changelog
 
+## v3.7.0 — Plugin self-update (the plugin keeps its OWN code current)
+
+Until now, only the **skills/agents/commands** auto-synced on SessionStart;
+the plugin's own code (scripts, hooks, scoring) was frozen at install time.
+A new self-update mechanism closes that gap — the plugin now keeps itself
+current with GitHub, the same way the skills do.
+
+### How it works
+
+On SessionStart, `runtime-check.js` spawns a detached, throttled child
+(`self-update-session-sync.js`, default once / 24h). That runs
+`plugin-self-update.js`, which:
+
+1. **Guards**: only acts on an installed cache copy
+   (`.../plugins/cache/<owner>/claude-model-changer/<version>/`). A dev
+   checkout (`.git` present) or any non-matching path is skipped — the
+   updater never touches a developer's working tree.
+2. Maintains a shallow self-clone under
+   `cache/<owner>/external/_self-update/` (`git fetch` + reset, or clone).
+3. Reads the upstream version from the clone's `package.json` (main branch)
+   and **SemVer-compares** to the running install. `3.10.0 > 3.9.9` etc.
+   handled correctly (numeric, not string, compare).
+4. If upstream is newer, copies the plugin tree into a **new** versioned
+   cache dir, writes install markers, then **atomically repoints**
+   `installed_plugins.json` at it (only the plugin's own entry is touched;
+   other plugins are preserved). The running session keeps the old version
+   until Claude Code restarts; the next launch picks up the new one.
+5. Removes now-orphan version dirs (SemVer-guarded, never the new one).
+6. Writes a one-time marker; the first session on the new version surfaces
+   `✓ Plugin self-updated X → Y (now active)` then clears it.
+
+### Safety
+
+- **Crash-safe swap**: the existing version dir is renamed aside *before*
+  staging is renamed into place; on any failure the backup is restored, so
+  a failed update can never destroy the current install. (A `--force`
+  in-place reinstall of the running dir is refused outright — Windows can't
+  rename a directory containing the executing script.)
+- `installed_plugins.json` is only ever written via temp+rename, and only
+  our own `claude-model-changer@<owner>` entry is modified.
+- Every failure path leaves the existing install fully intact and exits 0
+  (never blocks a session).
+- Opt out via `config/task-routing.json` → `"selfUpdate": { "enabled": false }`.
+  The skills sync is independent and keeps running.
+
+### Manual use
+
+```
+node scripts/plugin-self-update.js --check    # report if an update is available
+node scripts/plugin-self-update.js            # apply if newer
+node scripts/plugin-self-update.js --force     # reinstall upstream (different dir)
+```
+
+### Files
+
+- **New:** `scripts/plugin-self-update.js` — the updater
+- **New:** `scripts/self-update-session-sync.js` — throttled SessionStart spawner
+- **Modified:** `scripts/runtime-check.js` — spawns the self-update + one-time notice
+- **Modified:** `config/task-routing.json` — `selfUpdate` block
+- Tested: 7/7 SemVer cases, dev-checkout guard, isolated 3.0.0→3.6.2 upgrade
+  (other plugins preserved, orphan removed), idempotent no-op, crash-safe
+  `--force` refusal. All 79 unit tests still pass.
+
+---
+
 ## v3.6.2 — Audit hardening (concurrency, reproducibility, robustness)
 
 A full read-through of the plugin (5 hooks + lib layer + sync/installer)
