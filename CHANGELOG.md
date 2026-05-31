@@ -1,5 +1,24 @@
 # Changelog
 
+## v3.10.1 — Fix: self-update crashed on copy (SYNCED_PREFIXES regression)
+
+v3.9.0 removed the `SYNCED_PREFIXES` *declaration* from `plugin-self-update.js`
+but left a *reference* to it inside `copyTree()`. `node -c` passed (it's a
+runtime `ReferenceError`, not a syntax error), so it shipped. Any real upgrade
+then crashed with `SYNCED_PREFIXES is not defined` during the file copy — the
+crash-safe swap kept the existing install intact, but the update never
+completed. (So a v3.9.0 or v3.10.0 install can't self-update; it needs one
+manual `node install.js` to reach v3.10.1, after which self-update works again.)
+
+Fix: removed the dead reference (the clone is git-tracked, so it never contains
+synced items — the skip was always a no-op anyway).
+
+Prevention: `copyTree` is now exported and exercised by a unit test that copies
+a real temp tree, which catches this class of runtime ReferenceError that a
+syntax check misses. (+2 tests, 116 → 118.)
+
+---
+
 ## v3.10.0 — Same-name conflicts resolved richest-wins (was first-wins)
 
 v3.9.0 deduped same-name items by **first-wins** (config order) — arbitrary.

@@ -61,6 +61,32 @@ h.describe("plugin-self-update.isInstalledCacheCopy", function (it) {
   });
 });
 
+h.describe("plugin-self-update.copyTree", function (it) {
+  // Exercises the actual copy loop — catches runtime ReferenceErrors (e.g. the
+  // v3.9.0 regression where a removed SYNCED_PREFIXES var was still referenced,
+  // which `node -c` can't catch since it's not a syntax error).
+  var fs = require("fs"), path = require("path"), os = require("os");
+  var src = fs.mkdtempSync(path.join(os.tmpdir(), "cmc-ct-src-"));
+  var dst = fs.mkdtempSync(path.join(os.tmpdir(), "cmc-ct-dst-"));
+  fs.writeFileSync(path.join(src, "a.txt"), "hello");
+  fs.mkdirSync(path.join(src, "sub"));
+  fs.writeFileSync(path.join(src, "sub", "b.txt"), "world");
+  fs.mkdirSync(path.join(src, ".git"));
+  fs.writeFileSync(path.join(src, ".git", "x"), "skip me");
+
+  it("copies a tree without throwing and skips COPY_SKIP entries", function () {
+    su.copyTree(src, dst);
+    assert.strictEqual(fs.readFileSync(path.join(dst, "a.txt"), "utf8"), "hello");
+    assert.strictEqual(fs.readFileSync(path.join(dst, "sub", "b.txt"), "utf8"), "world");
+    assert.ok(!fs.existsSync(path.join(dst, ".git")), ".git should be skipped");
+  });
+  it("(cleanup)", function () {
+    fs.rmSync(src, { recursive: true, force: true });
+    fs.rmSync(dst, { recursive: true, force: true });
+    assert.ok(true);
+  });
+});
+
 h.describe("plugin-self-update.detectMarketplaceOwner", function (it) {
   it("honors CMC_MARKETPLACE_OWNER override", function () {
     var prev = process.env.CMC_MARKETPLACE_OWNER;

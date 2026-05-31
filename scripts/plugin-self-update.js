@@ -119,12 +119,6 @@ function copyTree(src, dst, depth) {
   for (var i = 0; i < entries.length; i++) {
     var e = entries[i];
     if (COPY_SKIP.indexOf(e.name) !== -1) continue;
-    // Skip auto-synced items if they somehow exist in the clone.
-    var isSynced = false;
-    for (var p = 0; p < SYNCED_PREFIXES.length; p++) {
-      if (e.name.indexOf(SYNCED_PREFIXES[p]) === 0) { isSynced = true; break; }
-    }
-    if (isSynced) continue;
     var s = path.join(src, e.name);
     var d = path.join(dst, e.name);
     if (e.isDirectory()) copyTree(s, d, depth + 1);
@@ -344,5 +338,6 @@ module.exports = {
   parseSemver: parseSemver,
   isNewer: isNewer,
   isInstalledCacheCopy: isInstalledCacheCopy,
-  detectMarketplaceOwner: detectMarketplaceOwner
+  detectMarketplaceOwner: detectMarketplaceOwner,
+  copyTree: copyTree
 };
