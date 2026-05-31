@@ -534,7 +534,7 @@ function totalsToString(totals) {
 // v3.8.0 (curation): all prefixes the sync has ever managed. Used so the prune
 // step never touches built-in items (model-router, haiku-worker, the plugin's
 // own commands) — only items under one of these prefixes are candidates.
-var MANAGED_PREFIXES = ["acs-", "ecc-", "od-", "nlb-", "obs-", "sp-", "rf-", "rfp-"];
+var MANAGED_PREFIXES = ["acs-", "ecc-", "od-", "nlb-", "obs-", "sp-", "rf-", "rfp-", "rfc-"];
 
 // The dest prefixes a single repo "owns" (from its sources' destPrefix, or the
 // leading "xxx-" segment of a destFolderName).

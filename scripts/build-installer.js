@@ -28,7 +28,7 @@ var EXCLUDE = [
   // bundle; every prefix below is gitignored and must NOT be embedded,
   // or the bundle balloons and reproducibility differs per dev machine.
   "skills/acs-", "skills/ecc-", "skills/od-", "skills/nlb-", "skills/karpathy-",
-  "skills/sp-", "skills/rf-", "skills/rfp-", "skills/obs-",
+  "skills/sp-", "skills/rf-", "skills/rfp-", "skills/rfc-", "skills/obs-",
   "agents/ecc-", "agents/rf-", "agents/rfp-",
   "commands/ecc-", "commands/rf-", "commands/rfp-"
 ];

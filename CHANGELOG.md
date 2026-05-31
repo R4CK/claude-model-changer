@@ -1,5 +1,26 @@
 # Changelog
 
+## v3.8.2 — Add ruflo's `.claude/skills` (Claude-Code-native variants)
+
+ruflo ships its skills in two trees: `.agents/skills` (its own agent framework,
+already synced as `rf-`) and `.claude/skills` (the Claude-Code-native variants).
+Only the former was synced. Investigation showed `.claude/skills` (39) overlaps
+`.agents/skills` by name on 37 entries — **but with different content** (the
+`.claude/` versions are distinct variants) — plus 2 genuinely new skills
+(`browser`, `dual-mode`).
+
+Added `.claude/skills` as a source under a **distinct `rfc-` prefix** so the
+variants coexist with the `rf-` set instead of clobbering them (no data loss).
+Net effect: `rfc-browser` + `rfc-dual-mode` are new, and 37 `rfc-*` variants sit
+alongside their `rf-*` counterparts. `rfc-` is registered in the managed-prefix
+list, so the prune/curation logic and `/skills-status` handle it like any other.
+
+Note: this adds ~39 skills of context for 2 net-new — if that's not worth it,
+disable it by removing the `.claude/skills` source or set ruflo `"enabled":
+false` and the next sync prunes all of it.
+
+---
+
 ## v3.8.1 — Fix: self-update couldn't read its own version on a real install
 
 The v3.7.0 self-update read the running version from `package.json`, but the
