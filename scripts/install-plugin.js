@@ -150,6 +150,35 @@ function makeHookCmd(pluginRoot, script) {
   return "node \"" + normalised + "/scripts/" + script + "\"";
 }
 
+// v3.7.1: wire the terminal statusline into ~/.claude/settings.json so the
+// routed model / context% / quota% / cost show in the Claude Code status bar.
+// Uses an absolute path to this install's statusline.js (CLAUDE_PLUGIN_ROOT
+// is not reliably expanded in a statusLine command). The path is kept current
+// by the installer and by plugin-self-update.js on each version change.
+// Conservative: only sets it if there is NO statusLine yet, or the existing one
+// is already ours — a user's custom statusLine is left untouched.
+function setupStatusLine(installDir) {
+  try {
+    var sjPath = getSettingsJsonPath();
+    var s = {};
+    if (fs.existsSync(sjPath)) {
+      try { s = JSON.parse(fs.readFileSync(sjPath, "utf8").replace(/^﻿/, "")); }
+      catch (e) { log("Warning: settings.json unreadable, skipping statusLine setup"); return; }
+    }
+    var existing = s.statusLine;
+    var isOurs = existing && existing.command &&
+      existing.command.indexOf("statusline.js") !== -1 &&
+      existing.command.indexOf("claude-model-changer") !== -1;
+    if (existing && !isOurs) { log("Custom statusLine present — left untouched"); return; }
+    var cmd = "node \"" + installDir.replace(/\\/g, "/") + "/scripts/statusline.js\"";
+    s.statusLine = { type: "command", command: cmd };
+    var tmp = sjPath + ".tmp-" + process.pid;
+    fs.writeFileSync(tmp, JSON.stringify(s, null, 2));
+    fs.renameSync(tmp, sjPath);
+    log("Configured terminal statusLine -> " + installDir);
+  } catch (e) { log("Warning: statusLine setup failed: " + e.message); }
+}
+
 function updateSettingsLocalHooks(pluginRoot) {
   var slPath = getSettingsLocalJsonPath();
   var sl = {};
@@ -410,6 +439,10 @@ function main() {
 
   // Write hooks once, pointing at current/ — never needs touching again on upgrades.
   updateSettingsLocalHooks(currentDir);
+
+  // v3.7.1: wire the terminal statusline at the stable current/ path so it
+  // survives version upgrades without further edits.
+  setupStatusLine(currentDir);
 
   // Clean up old cached versions (keep newest + 1 previous for rollback).
   var cacheBase = path.join(claudeDir, "plugins", "cache", PLUGIN_OWNER, PLUGIN_NAME);
