@@ -135,8 +135,11 @@ function getTuneAnalysis() {
       if (!categoryOverrides[key]) { categoryOverrides[key] = { upCount: 0, downCount: 0, fromModel: {}, toModel: {} }; }
       var fromScore = { haiku: 1, sonnet: 2, opus: 3 }[e.recommendedModel] || 2;
       var toScore = { haiku: 1, sonnet: 2, opus: 3 }[e.chosenModel] || 2;
+      // v3.6.2: ignore same-tier overrides (toScore === fromScore). Previously
+      // an equal-score override (e.g. a sonnet→sonnet re-log) was lumped into
+      // downCount, inflating the downgrade signal and skewing /tune suggestions.
       if (toScore > fromScore) categoryOverrides[key].upCount++;
-      else categoryOverrides[key].downCount++;
+      else if (toScore < fromScore) categoryOverrides[key].downCount++;
       categoryOverrides[key].fromModel[e.recommendedModel] = (categoryOverrides[key].fromModel[e.recommendedModel] || 0) + 1;
       categoryOverrides[key].toModel[e.chosenModel] = (categoryOverrides[key].toModel[e.chosenModel] || 0) + 1;
     });
@@ -176,13 +179,18 @@ function getQualityStats() {
 
     var modelRatings = {}, categoryRatings = {};
     entries.forEach(function(e) {
+      // v3.6.2: guard against malformed ratings. A single non-numeric rating
+      // (undefined/string/null in the quality log) would otherwise make
+      // sum = NaN and poison every downstream average via toFixed().
+      var rating = Number(e.rating);
+      if (!isFinite(rating)) return;
       var m = e.model || "unknown";
       if (!modelRatings[m]) modelRatings[m] = { sum: 0, count: 0 };
-      modelRatings[m].sum += e.rating;
+      modelRatings[m].sum += rating;
       modelRatings[m].count++;
       var key = m + ":" + (e.category || "unknown");
       if (!categoryRatings[key]) categoryRatings[key] = { sum: 0, count: 0, model: m, category: e.category };
-      categoryRatings[key].sum += e.rating;
+      categoryRatings[key].sum += rating;
       categoryRatings[key].count++;
     });
 
@@ -352,13 +360,16 @@ function getAutoTuneSuggestions(config) {
     // Build category+model pairs from quality ratings matched to usage entries
     var pairs = {};
     qualityEntries.forEach(function(q) {
+      // v3.6.2: skip malformed ratings so a bad log line can't NaN the average.
+      var qRating = Number(q.rating);
+      if (!isFinite(qRating)) return;
       var qTime = new Date(q.timestamp).getTime();
       var bestMatch = search.findClosestByTimestamp(tuneIndex.sorted, tuneIndex.timestamps, qTime, 120000);
       if (!bestMatch) return;
       var key = (bestMatch.model || "unknown") + ":" + (bestMatch.category || "unknown");
       if (!pairs[key]) pairs[key] = { model: bestMatch.model, category: bestMatch.category, ratings: [], sum: 0 };
-      pairs[key].ratings.push(q.rating);
-      pairs[key].sum += q.rating;
+      pairs[key].ratings.push(qRating);
+      pairs[key].sum += qRating;
     });
 
     var minRatings = (config && config.goalVerification && config.goalVerification.minRatingsPerPair) || 5;

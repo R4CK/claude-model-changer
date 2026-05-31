@@ -105,13 +105,24 @@ function hasGit() {
   return r.status === 0;
 }
 
-// Dereferences symlinks and copies their target content. Skips broken /
-// circular links rather than aborting the whole sync. Depth-capped at 32 to
-// keep pathological cases bounded.
-function copyDirRecursive(src, dest, skipNames, depth) {
+// v3.6.2: symlink boundary — the realpath of the external cache root. A
+// symlink is dereferenced only if its target stays within this boundary
+// (e.g. ui-ux-pro-max-skill uses in-repo symlinks like ../../../src/...).
+// A link escaping the cache (→ /etc, ~/.ssh, etc.) is skipped so a crafted
+// upstream repo can't pull host files into the plugin.
+function _cacheBoundary() {
+  try { return fs.realpathSync(getCacheRoot()); }
+  catch (e) { return getCacheRoot(); }
+}
+
+// Dereferences in-cache symlinks and copies their target content. Skips broken,
+// circular, or cache-escaping links rather than aborting the whole sync.
+// Depth-capped at 32 to keep pathological cases bounded.
+function copyDirRecursive(src, dest, skipNames, depth, boundary) {
   skipNames = skipNames || [];
   depth = depth || 0;
   if (depth > 32) return;
+  if (!boundary) boundary = _cacheBoundary();
   if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
   var entries;
   try { entries = fs.readdirSync(src, { withFileTypes: true }); }
@@ -125,13 +136,14 @@ function copyDirRecursive(src, dest, skipNames, depth) {
       var real;
       try { real = fs.realpathSync(s); }
       catch (err) { continue; }
+      if (real.indexOf(boundary) !== 0) continue; // escapes cache — skip
       var st;
       try { st = fs.statSync(real); }
       catch (err) { continue; }
-      if (st.isDirectory()) copyDirRecursive(real, d, skipNames, depth + 1);
+      if (st.isDirectory()) copyDirRecursive(real, d, skipNames, depth + 1, boundary);
       else { try { fs.copyFileSync(real, d); } catch (err) { /* skip */ } }
     } else if (e.isDirectory()) {
-      copyDirRecursive(s, d, skipNames, depth + 1);
+      copyDirRecursive(s, d, skipNames, depth + 1, boundary);
     } else if (e.isFile()) {
       try { fs.copyFileSync(s, d); } catch (err) { /* skip unreadable */ }
     }
@@ -456,13 +468,27 @@ function installSourceItems(repo, source, pluginRoot) {
     if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
     var dest = path.join(destDir, it.destName);
     if (it.isFile) {
-      // File replacement: simple overwrite
+      // File replacement: simple overwrite (single small .md, near-atomic).
       try { fs.rmSync(dest, { force: true }); } catch (e) {}
       if (copyFileSafe(it.srcPath, dest)) installed.push(it.destName);
     } else {
-      rmrf(dest);
-      copyDirRecursive(it.srcPath, dest, SKIP_NAMES_DEFAULT);
-      installed.push(it.destName);
+      // v3.6.2: copy into a temp dir FIRST, then swap. Previously we did
+      // `rmrf(dest)` then copy — a mid-copy failure left a half-populated dir
+      // that destItemsPresent() (top-level existence only) treats as complete,
+      // so the next run smart-skips it and the corruption persists forever.
+      // Copying to a sibling temp then renaming keeps the existing install
+      // intact on failure and makes the visible swap atomic.
+      var tmpDest = dest + ".tmp-" + process.pid + "-" + Date.now();
+      try {
+        rmrf(tmpDest);
+        copyDirRecursive(it.srcPath, tmpDest, SKIP_NAMES_DEFAULT);
+        rmrf(dest);
+        fs.renameSync(tmpDest, dest);
+        installed.push(it.destName);
+      } catch (e) {
+        rmrf(tmpDest); // clean up partial temp; existing dest is untouched
+        warn(repo.name, "copy failed for " + it.destName + ": " + (e && e.message || e));
+      }
     }
   }
   return installed;

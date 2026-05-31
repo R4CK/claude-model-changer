@@ -12,7 +12,7 @@
 
 var fs = require("fs");
 var path = require("path");
-var sleep = require("./lib/sleep");
+var atomicIo = require("./lib/atomic-io");
 
 var LOGS_DIR = path.join(__dirname, "..", "logs");
 var FALLBACK_LOG = path.join(LOGS_DIR, "fallbacks.jsonl");
@@ -50,68 +50,30 @@ process.stdin.on("end", function() {
     }
 
     if (detectedModel) {
-      var LOCK_PATH = SESSION_PATH + ".lock";
-      var locked = false;
       try {
-        // Inline subagent logging (same logic as log-subagent.js)
         if (!fs.existsSync(LOGS_DIR)) fs.mkdirSync(LOGS_DIR, { recursive: true });
 
-        var lockStart = Date.now();
-        while (Date.now() - lockStart < 3000) {
-          try {
-            fs.writeFileSync(LOCK_PATH, String(process.pid), { flag: "wx" });
-            locked = true;
-            break;
-          } catch (e) {
-            var ls;
-            try { ls = fs.statSync(LOCK_PATH); }
-            catch (x) { sleep.sleepSync(50); continue; }
+        // v3.6.2: route the counter increment through atomic-io read-modify-
+        // write instead of a bespoke lockfile. mergeFn increments from
+        // `current` (freshest disk state); on a concurrent-write retry it
+        // re-runs against the new state, so the +1 is never lost. Previously
+        // this used its own SESSION_PATH.lock spin-lock that the analyze-
+        // complexity writer (session-utils.saveSessionState) did NOT honor,
+        // so an interleave could silently drop a subagent counter increment.
+        var mergeResult = atomicIo.atomicMergeJson(SESSION_PATH, function(current) {
+          var state = (current && typeof current === "object") ? current : {};
+          if (!state.modelCounts || typeof state.modelCounts !== "object") state.modelCounts = { haiku: 0, sonnet: 0, opus: 0 };
+          if (!state.subagentCounts || typeof state.subagentCounts !== "object") state.subagentCounts = { haiku: 0, sonnet: 0, opus: 0 };
+          state.modelCounts[detectedModel] = (Number(state.modelCounts[detectedModel]) || 0) + 1;
+          state.subagentCounts[detectedModel] = (Number(state.subagentCounts[detectedModel]) || 0) + 1;
+          // NOTE: subagent completions are not user prompts, so promptCount is left unchanged.
+          return state;
+        }, {});
 
-            if (Date.now() - ls.mtimeMs > 10000) {
-              // Stale lock: only force-remove if owning PID is verifiably dead
-              // or the PID is unparseable (no one to defer to).
-              // If the lockfile is transiently unreadable, wait another cycle
-              // instead of force-removing (prevents racing with the real owner).
-              var pidDead = false;
-              var pidKnown = false;
-              try {
-                var raw = fs.readFileSync(LOCK_PATH, "utf8");
-                var lockPid = parseInt(raw, 10);
-                if (lockPid && !isNaN(lockPid)) {
-                  pidKnown = true;
-                  try { process.kill(lockPid, 0); } catch (x) { pidDead = true; }
-                }
-              } catch (x) { /* unreadable: wait, do not force-remove */ }
-              if (pidDead || !pidKnown) {
-                try { fs.unlinkSync(LOCK_PATH); } catch (x2) {}
-              }
-              continue;
-            }
-            sleep.sleepSync(50);
-          }
+        if (!mergeResult.ok) {
+          process.stderr.write("[detect-fallback] Session merge failed: " + (mergeResult.error || "unknown") + "\n");
         }
 
-        var state = {};
-        try {
-          if (fs.existsSync(SESSION_PATH)) {
-            state = JSON.parse(fs.readFileSync(SESSION_PATH, "utf8").replace(/^\uFEFF/, ""));
-          }
-        } catch (e) {
-          process.stderr.write("[detect-fallback] Corrupt session state, starting fresh: " + e.message + "\n");
-        }
-
-        if (!state.modelCounts || typeof state.modelCounts !== "object") state.modelCounts = { haiku: 0, sonnet: 0, opus: 0 };
-        if (!state.subagentCounts || typeof state.subagentCounts !== "object") state.subagentCounts = { haiku: 0, sonnet: 0, opus: 0 };
-
-        state.modelCounts[detectedModel] = (Number(state.modelCounts[detectedModel]) || 0) + 1;
-        state.subagentCounts[detectedModel] = (Number(state.subagentCounts[detectedModel]) || 0) + 1;
-        // NOTE: Do NOT increment promptCount here — subagent completions are not user prompts
-
-        var tmpPath = SESSION_PATH + "." + process.pid + ".tmp";
-        fs.writeFileSync(tmpPath, JSON.stringify(state));
-        fs.renameSync(tmpPath, SESSION_PATH);
-
-        // Append to usage.jsonl
         var subEntry = { timestamp: new Date().toISOString(), model: detectedModel, source: "subagent",
           category: "delegated-task", score: detectedModel === "haiku" ? 2 : detectedModel === "sonnet" ? 5 : 9,
           level: detectedModel === "haiku" ? "SIMPLE" : detectedModel === "sonnet" ? "MEDIUM" : "COMPLEX", autoRouted: true };
@@ -120,11 +82,6 @@ process.stdin.on("end", function() {
         process.stderr.write("[detect-fallback] Auto-logged " + detectedModel + " subagent from agent: " + agentName + "\n");
       } catch (logErr) {
         process.stderr.write("[detect-fallback] Subagent log error: " + logErr.message + "\n");
-        // Clean up temp file if it exists
-        try { fs.unlinkSync(SESSION_PATH + "." + process.pid + ".tmp"); } catch(e) {}
-      } finally {
-        // Always release lock to prevent stale locks
-        if (locked) try { fs.unlinkSync(LOCK_PATH); } catch(e) {}
       }
     }
 
