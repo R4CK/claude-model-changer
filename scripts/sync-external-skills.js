@@ -616,24 +616,113 @@ function configSignature(cfg) {
   } catch (e) { return ""; }
 }
 
+var DEDUP_REPORT_NAME = "external-skills-dedup.json";
+
+// Total bytes of a skill folder (recursive) or a single .md file. Used as the
+// "thoroughness" proxy for richest-wins dedup: when two repos provide the same
+// name, the larger item (more instructions, more supporting files) is assumed
+// the more comprehensive one and wins.
+function folderBytes(dir, depth) {
+  depth = depth || 0;
+  if (depth > 32) return 0;
+  var total = 0, entries;
+  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { return 0; }
+  for (var i = 0; i < entries.length; i++) {
+    var e = entries[i];
+    if (SKIP_NAMES_DEFAULT.indexOf(e.name) !== -1) continue;
+    var p = path.join(dir, e.name);
+    if (e.isDirectory()) total += folderBytes(p, depth + 1);
+    else { try { total += fs.statSync(p).size; } catch (x) {} }
+  }
+  return total;
+}
+
+function itemBytes(it) {
+  try { return it.isFile ? fs.statSync(it.srcPath).size : folderBytes(it.srcPath); }
+  catch (e) { return 0; }
+}
+
+// Flatten a repo's sources into candidate items, each tagged with a global
+// `order` index so richest-wins ties resolve deterministically by config order.
+function discoverRepoCandidates(repo, orderRef) {
+  var out = [];
+  getRepoSources(repo).forEach(function (source) {
+    discoverSourceItems(repo, source).forEach(function (it) {
+      out.push({
+        repo: repo.name, kind: it.kind || "skill", identity: itemIdentity(it),
+        destName: it.destName, srcPath: it.srcPath, isFile: it.isFile, order: orderRef.n++
+      });
+    });
+  });
+  return out;
+}
+
 /**
- * Full install: walk enabled repos in config order, install with first-wins
- * dedup, reconcile against the previous manifest, and persist the new manifest.
+ * Group candidates by (kind, identity) and pick a winner per group:
+ *   - one candidate  -> wins, no conflict recorded
+ *   - many           -> the one with the MOST bytes wins (more thorough);
+ *                       ties break to the earliest config order.
+ * Returns { winners: [candidate], decisions: [conflict-record] }. Richness is
+ * only computed for actual conflicts (cheap: a few dozen groups).
  */
-function fullInstall(cfg, pluginRoot) {
+function resolveConflicts(candidates) {
+  var groups = {};
+  candidates.forEach(function (c) {
+    var key = c.kind + " " + c.identity;
+    (groups[key] || (groups[key] = [])).push(c);
+  });
+  var winners = [], decisions = [];
+  Object.keys(groups).sort().forEach(function (key) {
+    var g = groups[key];
+    if (g.length === 1) { winners.push(g[0]); return; }
+    g.forEach(function (c) { c.bytes = itemBytes(c); });
+    var sorted = g.slice().sort(function (a, b) {
+      if (b.bytes !== a.bytes) return b.bytes - a.bytes;   // larger first
+      return a.order - b.order;                             // tie -> config order
+    });
+    var winner = sorted[0];
+    winners.push(winner);
+    decisions.push({
+      name: winner.destName, kind: winner.kind, identity: winner.identity,
+      winner: { repo: winner.repo, bytes: winner.bytes },
+      reason: (sorted[1] && sorted[1].bytes === winner.bytes) ? "tie -> earliest config order" : "largest content",
+      candidates: sorted.map(function (c) { return { repo: c.repo, bytes: c.bytes }; })
+    });
+  });
+  return { winners: winners, decisions: decisions };
+}
+
+/**
+ * Full install: discover all candidates from enabled repos, resolve same-name
+ * conflicts by richest-wins (the more thorough item is kept), install the
+ * winners, reconcile against the previous manifest, and persist both the
+ * manifest and a human-readable dedup-decisions report (every conflict + why).
+ */
+function fullInstall(cfg, pluginRoot, stampIso) {
   var oldManifest = readJsonSafe(manifestPath(pluginRoot)) || {};
   delete oldManifest._configSignature;
-  var newManifest = {};
-  var dedup = {};
-  var totals = { skill: 0, agent: 0, command: 0, hook: 0, skipped: 0 };
 
+  var candidates = [];
+  var orderRef = { n: 0 };
   (cfg.repos || []).forEach(function (repo) {
     if (!repo || repo.enabled === false) return;
-    var entry = {};
-    var t = installRepo(repo, pluginRoot, dedup, entry);
-    newManifest[repo.name] = entry;
-    ["skill", "agent", "command", "hook", "skipped"].forEach(function (k) { totals[k] += (t[k] || 0); });
-    log(repo.name, "installed " + totalsToString(t));
+    candidates = candidates.concat(discoverRepoCandidates(repo, orderRef));
+  });
+
+  var resolved = resolveConflicts(candidates);
+
+  var newManifest = {};
+  var totals = { skill: 0, agent: 0, command: 0, hook: 0, skipped: candidates.length - resolved.winners.length };
+  resolved.winners.forEach(function (w) {
+    if (copyItem(w, pluginRoot, w.repo)) {
+      if (!newManifest[w.repo]) newManifest[w.repo] = {};
+      (newManifest[w.repo][w.kind] || (newManifest[w.repo][w.kind] = [])).push(w.destName);
+      totals[w.kind] = (totals[w.kind] || 0) + 1;
+    }
+  });
+  // Every enabled repo gets a manifest entry even if it won nothing.
+  (cfg.repos || []).forEach(function (repo) {
+    if (repo && repo.enabled !== false && !newManifest[repo.name]) newManifest[repo.name] = {};
   });
 
   var removed = reconcile(pluginRoot, oldManifest, newManifest);
@@ -644,8 +733,17 @@ function fullInstall(cfg, pluginRoot) {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     newManifest._configSignature = configSignature(cfg);
     fs.writeFileSync(manifestPath(pluginRoot), JSON.stringify(newManifest, null, 2), "utf8");
+    fs.writeFileSync(path.join(dir, DEDUP_REPORT_NAME), JSON.stringify({
+      generatedAt: stampIso || null,
+      strategy: "richest-wins (largest total bytes; ties -> earliest config order)",
+      conflictCount: resolved.decisions.length,
+      conflicts: resolved.decisions
+    }, null, 2), "utf8");
   } catch (e) { warn("manifest", "write failed: " + e.message); }
 
+  if (resolved.decisions.length) {
+    log("dedup", resolved.decisions.length + " name conflict(s) resolved by richest-wins (see logs/" + DEDUP_REPORT_NAME + ")");
+  }
   return totals;
 }
 
@@ -692,7 +790,7 @@ function main() {
     return;
   }
 
-  var totals = fullInstall(cfg, pluginRoot);
+  var totals = fullInstall(cfg, pluginRoot, new Date().toISOString());
   log("done", "installed " + totalsToString(totals));
 }
 
@@ -711,10 +809,14 @@ module.exports = {
   readItemName: readItemName,
   itemIdentity: itemIdentity,
   fullInstall: fullInstall,
+  itemBytes: itemBytes,
+  folderBytes: folderBytes,
+  resolveConflicts: resolveConflicts,
   remoteHeadSha: remoteHeadSha,
   localHeadSha: localHeadSha,
   getCacheRoot: getCacheRoot,
   resolvePluginRoot: resolvePluginRoot,
   walkMdFiles: walkMdFiles,
-  manifestPath: manifestPath
+  manifestPath: manifestPath,
+  dedupReportName: DEDUP_REPORT_NAME
 };

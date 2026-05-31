@@ -60,3 +60,4 @@ Thumbs.db
 *.swp
 .vscode/
 .idea/
+logs/external-skills-dedup.json

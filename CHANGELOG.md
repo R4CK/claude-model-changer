@@ -1,5 +1,56 @@
 # Changelog
 
+## v3.10.0 — Same-name conflicts resolved richest-wins (was first-wins)
+
+v3.9.0 deduped same-name items by **first-wins** (config order) — arbitrary.
+Now when two repos provide an item with the same name, the sync keeps the
+**richest** one: the larger by total content bytes (a bigger SKILL.md + more
+supporting files = assumed more comprehensive). Exact ties break to the earliest
+repo in config order, so the outcome is fully deterministic.
+
+Why size and not a real merge: skills/agents/commands are prose Markdown
+documents — auto-merging two of them produces conflict-garbage, not a better
+skill. Total content size is the best automatable proxy for "more thorough", and
+it's transparent and reproducible.
+
+### Full traceability (the "follow it every time" part)
+
+Every conflict and its resolution is written to
+`logs/external-skills-dedup.json`:
+
+```json
+{
+  "strategy": "richest-wins (largest total bytes; ties -> earliest config order)",
+  "conflictCount": 75,
+  "conflicts": [
+    { "name": "architect.md", "kind": "agent",
+      "winner": { "repo": "everything-claude-code", "bytes": 7504 },
+      "reason": "largest content",
+      "candidates": [ {"repo":"everything-claude-code","bytes":7504}, {"repo":"ruflo","bytes":1731} ] }
+  ]
+}
+```
+
+`/skills-status` surfaces a `DEDUP:` section listing each winner, its size, and
+who it beat. So you can audit exactly which version of every clashing skill is
+live, and why — the same repos + content always resolve the same way.
+
+### Verification
+
+On the real 7-repo set: 75 name conflicts, and in **all 75** the winner is the
+largest candidate (0 wrong). The richness check only runs for actual conflicts
+(~75 groups), so it adds negligible time.
+
+### Files
+
+- **Modified:** `scripts/sync-external-skills.js` — `resolveConflicts()`
+  (richest-wins) replaces first-wins; writes the dedup report
+- **Modified:** `scripts/skills-status.js` + `commands/skills-status.md` —
+  surface the dedup decisions
+- **+4 tests** (112 → 116) for richest-wins resolution
+
+---
+
 ## v3.9.0 — Original repo names (no invented prefixes) + dedup + manifest
 
 Per user direction: synced skills/agents/commands now keep their **original

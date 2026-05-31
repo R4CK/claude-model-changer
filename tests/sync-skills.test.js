@@ -103,6 +103,38 @@ h.describe("sync.readItemName (agent identity)", function (it) {
   it("(cleanup)", function () { fs.rmSync(dir, { recursive: true, force: true }); assert.ok(true); });
 });
 
+h.describe("sync.resolveConflicts (richest-wins)", function (it) {
+  var dir = fs.mkdtempSync(path.join(os.tmpdir(), "cmc-rich-"));
+  // Same name in two repos; B's file is larger → B should win.
+  var small = path.join(dir, "small.md"); fs.writeFileSync(small, "x");           // 1 byte
+  var big = path.join(dir, "big.md");     fs.writeFileSync(big, "x".repeat(500));  // 500 bytes
+  var uniq = path.join(dir, "u.md");      fs.writeFileSync(uniq, "y");
+
+  var cands = [
+    { repo: "A", kind: "skill", identity: "brand-guidelines", destName: "brand-guidelines", isFile: true, srcPath: small, order: 0 },
+    { repo: "B", kind: "skill", identity: "brand-guidelines", destName: "brand-guidelines", isFile: true, srcPath: big, order: 1 },
+    { repo: "A", kind: "skill", identity: "only-here", destName: "only-here", isFile: true, srcPath: uniq, order: 2 }
+  ];
+  var r = sync.resolveConflicts(cands);
+
+  it("keeps the larger (more thorough) item", function () {
+    var w = r.winners.filter(function (x) { return x.identity === "brand-guidelines"; })[0];
+    assert.strictEqual(w.repo, "B", "expected the bigger repo B to win");
+  });
+  it("records a conflict decision with the reason and byte sizes", function () {
+    assert.strictEqual(r.decisions.length, 1);
+    var d = r.decisions[0];
+    assert.strictEqual(d.winner.repo, "B");
+    assert.strictEqual(d.reason, "largest content");
+    assert.ok(d.candidates.length === 2 && d.candidates[0].bytes >= d.candidates[1].bytes);
+  });
+  it("does not record a conflict for unique names", function () {
+    assert.ok(r.winners.some(function (x) { return x.identity === "only-here"; }));
+    assert.ok(!r.decisions.some(function (d) { return d.name === "only-here"; }));
+  });
+  it("(cleanup)", function () { fs.rmSync(dir, { recursive: true, force: true }); assert.ok(true); });
+});
+
 h.describe("sync.reconcile (manifest-based prune)", function (it) {
   var root = fs.mkdtempSync(path.join(os.tmpdir(), "cmc-recon-"));
   ["skills", "agents", "commands"].forEach(function (d) { fs.mkdirSync(path.join(root, d)); });
