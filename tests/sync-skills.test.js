@@ -82,6 +82,54 @@ h.describe("sync.walkMdFiles", function (it) {
   });
 });
 
+h.describe("sync.rewriteFrontmatterName", function (it) {
+  var dir = fs.mkdtempSync(path.join(os.tmpdir(), "cmc-rwn-"));
+
+  it("replaces an existing name: field", function () {
+    var f = path.join(dir, "a.md");
+    fs.writeFileSync(f, "---\nname: architect\ndescription: x\n---\nbody");
+    var ok = sync.rewriteFrontmatterName(f, "ecc-architect");
+    assert.strictEqual(ok, true);
+    var c = fs.readFileSync(f, "utf8");
+    assert.ok(/^name: ecc-architect$/m.test(c), "name not rewritten: " + c);
+    assert.ok(/description: x/.test(c), "description lost");
+    assert.ok(/body/.test(c), "body lost");
+  });
+
+  it("inserts name: when frontmatter lacks it", function () {
+    var f = path.join(dir, "b.md");
+    fs.writeFileSync(f, "---\ndescription: only desc\n---\nbody");
+    sync.rewriteFrontmatterName(f, "rf-coder");
+    var c = fs.readFileSync(f, "utf8");
+    assert.ok(/^name: rf-coder$/m.test(c), "name not inserted: " + c);
+  });
+
+  it("leaves a file without frontmatter untouched", function () {
+    var f = path.join(dir, "c.md");
+    fs.writeFileSync(f, "# Just a doc\n\nno frontmatter");
+    var ok = sync.rewriteFrontmatterName(f, "x-doc");
+    assert.strictEqual(ok, false);
+    assert.strictEqual(fs.readFileSync(f, "utf8"), "# Just a doc\n\nno frontmatter");
+  });
+
+  it("makes two same-named agents unique", function () {
+    var f1 = path.join(dir, "ecc-architect.md");
+    var f2 = path.join(dir, "rf-architect.md");
+    fs.writeFileSync(f1, "---\nname: architect\n---\nA");
+    fs.writeFileSync(f2, "---\nname: architect\n---\nB");
+    sync.rewriteFrontmatterName(f1, "ecc-architect");
+    sync.rewriteFrontmatterName(f2, "rf-architect");
+    var n1 = fs.readFileSync(f1, "utf8").match(/^name: (.+)$/m)[1];
+    var n2 = fs.readFileSync(f2, "utf8").match(/^name: (.+)$/m)[1];
+    assert.notStrictEqual(n1, n2);
+  });
+
+  it("(cleanup fixture)", function () {
+    fs.rmSync(dir, { recursive: true, force: true });
+    assert.ok(!fs.existsSync(dir));
+  });
+});
+
 h.describe("sync.getCacheRoot", function (it) {
   it("ends with /external under the marketplace owner", function () {
     var cr = sync.getCacheRoot().replace(/\\/g, "/");

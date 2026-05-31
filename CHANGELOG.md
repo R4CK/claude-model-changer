@@ -1,5 +1,28 @@
 # Changelog
 
+## v3.8.3 — Fix: duplicate agent names silently shadowed each other
+
+Per Claude Code's documented behavior, **agents are identified by their YAML
+frontmatter `name:` field — not by filename**. If two agents share a `name:`,
+Claude Code "keeps one and discards the other without warning". Many upstream
+repos reuse generic agent names (`architect`, `coder`, `planner`,
+`code-analyzer`, ...), so across the synced set there were **19 colliding agent
+names** — e.g. `ecc-architect.md` and `rfp-ruflo-swarm-architect.md` both
+declared `name: architect`, so one silently shadowed the other.
+
+Fix: the sync now rewrites every synced **agent**'s frontmatter `name:` to its
+unique prefixed filename (e.g. `name: ecc-architect`, `name: rf-architect`), so
+no two agents can collide. Verified by scanning the post-sync set for duplicate
+`name:` values (0 after the fix).
+
+**Skills and commands were already fine** and are left untouched: skills are
+keyed by their (prefixed, unique) folder name and commands by their (prefixed,
+unique) filename — the frontmatter `name:` is cosmetic for those. So the ~50
+duplicate skill `name:` values are harmless (each is invoked as
+`/claude-model-changer:<unique-folder>`).
+
+---
+
 ## v3.8.2 — Add ruflo's `.claude/skills` (Claude-Code-native variants)
 
 ruflo ships its skills in two trees: `.agents/skills` (its own agent framework,

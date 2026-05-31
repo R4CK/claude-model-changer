@@ -157,6 +157,31 @@ function copyFileSafe(src, dest) {
   catch (e) { return false; }
 }
 
+// v3.8.3: agents are identified by their YAML frontmatter `name:` field — NOT
+// by filename. Two agents with the same `name:` make Claude Code silently
+// discard one (documented behavior). Since many upstream repos reuse generic
+// agent names (architect, coder, planner, ...), we rewrite each synced agent's
+// `name:` to its unique prefixed dest name so none can shadow another.
+// (Skills key off the folder name and commands off the filename — both already
+// unique via the prefix — so only agents need this.)
+function rewriteFrontmatterName(filePath, newName) {
+  try {
+    var content = fs.readFileSync(filePath, "utf8");
+    var m = content.match(/^(﻿?)---\r?\n([\s\S]*?)\r?\n---/);
+    if (!m) return false;                 // no frontmatter — leave untouched
+    var bom = m[1] || "";
+    var fm = m[2];
+    var rest = content.slice(m[0].length);
+    if (/^name:[ \t]*.*$/m.test(fm)) {
+      fm = fm.replace(/^name:[ \t]*.*$/m, "name: " + newName);
+    } else {
+      fm = "name: " + newName + "\n" + fm;
+    }
+    fs.writeFileSync(filePath, bom + "---\n" + fm + "\n---" + rest, "utf8");
+    return true;
+  } catch (e) { return false; }
+}
+
 function rmrf(p) {
   if (!fs.existsSync(p)) return;
   fs.rmSync(p, { recursive: true, force: true });
@@ -470,7 +495,14 @@ function installSourceItems(repo, source, pluginRoot) {
     if (it.isFile) {
       // File replacement: simple overwrite (single small .md, near-atomic).
       try { fs.rmSync(dest, { force: true }); } catch (e) {}
-      if (copyFileSafe(it.srcPath, dest)) installed.push(it.destName);
+      if (copyFileSafe(it.srcPath, dest)) {
+        // v3.8.3: make agent frontmatter `name:` unique (= prefixed filename)
+        // so no two agents collide and get silently dropped by Claude Code.
+        if (it.kind === "agent") {
+          rewriteFrontmatterName(dest, it.destName.replace(/\.md$/i, ""));
+        }
+        installed.push(it.destName);
+      }
     } else {
       // v3.6.2: copy into a temp dir FIRST, then swap. Previously we did
       // `rmrf(dest)` then copy — a mid-copy failure left a half-populated dir
@@ -703,5 +735,6 @@ module.exports = {
   walkMdFiles: walkMdFiles,
   ownedPrefixes: ownedPrefixes,
   pruneInactive: pruneInactive,
+  rewriteFrontmatterName: rewriteFrontmatterName,
   MANAGED_PREFIXES: MANAGED_PREFIXES
 };
