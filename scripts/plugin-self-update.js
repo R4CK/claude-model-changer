@@ -285,6 +285,24 @@ function main() {
     return;
   }
 
+  // 4b. Keep the terminal statusLine pointed at the NEW install dir. Only touch
+  // it if it already points at OUR statusline.js (an absolute path written by a
+  // previous install/update) — never clobber a user's custom statusLine, and
+  // never introduce one that wasn't there.
+  try {
+    var settingsFile = path.join(home, ".claude", "settings.json");
+    var sj = readJsonSafe(settingsFile);
+    if (sj && sj.statusLine && sj.statusLine.command &&
+        sj.statusLine.command.indexOf("statusline.js") !== -1 &&
+        sj.statusLine.command.indexOf("claude-model-changer") !== -1) {
+      var newCmd = "node \"" + newDir.replace(/\\/g, "/") + "/scripts/statusline.js\"";
+      if (sj.statusLine.command !== newCmd) {
+        sj.statusLine.command = newCmd;
+        if (atomicWriteJson(settingsFile, sj)) log("statusLine repointed to new install");
+      }
+    }
+  } catch (e) { /* best-effort */ }
+
   // 5. Clean up orphan version dirs (keep the new one).
   try {
     fs.readdirSync(installRoot).forEach(function(name) {

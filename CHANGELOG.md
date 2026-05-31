@@ -1,5 +1,37 @@
 # Changelog
 
+## v3.7.1 — Installer auto-wires the terminal statusline
+
+The plugin already shipped `statusline.js` and a `/statusline` command, but
+the install never wired it into `~/.claude/settings.json` — so the terminal
+status bar (routed model / context% / weekly quota% / cost) only appeared if
+the user configured it manually. Now the installer does it automatically.
+
+### What changed
+
+- **`install.js` / `install-plugin.js`**: after registration, set
+  `settings.json` → `statusLine` to an absolute path to this install's
+  `statusline.js`. `CLAUDE_PLUGIN_ROOT` is **not** reliably expanded in a
+  statusLine command (unlike hooks), so an absolute path is used and kept
+  current by the self-update (below). `install-plugin.js` points at its
+  stable `current/` dir; `install.js` points at the versioned cache dir.
+- **`plugin-self-update.js`**: when it repoints `installed_plugins.json` to a
+  new version, it also repoints the `statusLine` command to the new dir — so
+  terminal stats keep working across self-updates without a stale path.
+- **Conservative everywhere**: the statusLine is only set when absent or when
+  it already points at our `statusline.js`. A user's **custom** statusLine is
+  never overwritten (verified in tests).
+
+### Notes
+
+- Chat stats (the `📊` footer) were already working — that's emitted by the
+  `UserPromptSubmit` hook and is independent of the statusline.
+- After installing this version, restart Claude Code once; the status bar
+  then shows e.g. `🟢 sonnet │ ctx 23% │ wk 12% │ $0.42`. Formats:
+  `/statusline format <compact|minimal|verbose>`.
+
+---
+
 ## v3.7.0 — Plugin self-update (the plugin keeps its OWN code current)
 
 Until now, only the **skills/agents/commands** auto-synced on SessionStart;
