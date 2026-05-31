@@ -531,11 +531,73 @@ function totalsToString(totals) {
   return parts.length ? parts.join(", ") : "0 item(s)";
 }
 
+// v3.8.0 (curation): all prefixes the sync has ever managed. Used so the prune
+// step never touches built-in items (model-router, haiku-worker, the plugin's
+// own commands) — only items under one of these prefixes are candidates.
+var MANAGED_PREFIXES = ["acs-", "ecc-", "od-", "nlb-", "obs-", "sp-", "rf-", "rfp-"];
+
+// The dest prefixes a single repo "owns" (from its sources' destPrefix, or the
+// leading "xxx-" segment of a destFolderName).
+function ownedPrefixes(repo) {
+  var out = [];
+  var sources = getRepoSources(repo);
+  for (var i = 0; i < sources.length; i++) {
+    var s = sources[i];
+    if (s.destPrefix) {
+      if (out.indexOf(s.destPrefix) === -1) out.push(s.destPrefix);
+    } else if (s.destFolderName) {
+      var m = s.destFolderName.match(/^([a-z0-9]+-)/i);
+      if (m && out.indexOf(m[1]) === -1) out.push(m[1]);
+    }
+  }
+  return out;
+}
+
+/**
+ * Curation prune: remove synced items whose prefix belongs to a DISABLED or
+ * REMOVED repo, so setting `"enabled": false` on a heavy repo actually frees
+ * the ~per-skill context Claude Code loads. Only items under a MANAGED_PREFIXES
+ * prefix are ever candidates — built-in items are never touched.
+ * Returns the count removed.
+ */
+function pruneInactive(pluginRoot, cfg) {
+  var repos = (cfg && cfg.repos) || [];
+  var active = {}, managed = {};
+  for (var i = 0; i < repos.length; i++) {
+    var pres = ownedPrefixes(repos[i]);
+    for (var j = 0; j < pres.length; j++) {
+      managed[pres[j]] = true;
+      if (repos[i].enabled) active[pres[j]] = true;
+    }
+  }
+  for (var k = 0; k < MANAGED_PREFIXES.length; k++) managed[MANAGED_PREFIXES[k]] = true;
+
+  var removed = 0;
+  ["skills", "agents", "commands", "hooks"].forEach(function (kindDir) {
+    var dir = path.join(pluginRoot, kindDir);
+    if (!fs.existsSync(dir)) return;
+    var entries;
+    try { entries = fs.readdirSync(dir); } catch (e) { return; }
+    entries.forEach(function (name) {
+      var pfx = null;
+      // Longest-prefix-first so "rfp-" wins over a hypothetical "rf" overlap.
+      var keys = Object.keys(managed).sort(function (a, b) { return b.length - a.length; });
+      for (var q = 0; q < keys.length; q++) { if (name.indexOf(keys[q]) === 0) { pfx = keys[q]; break; } }
+      if (!pfx) return;          // not a managed item — keep (model-router, built-ins)
+      if (active[pfx]) return;   // owned by an enabled repo — keep
+      try { fs.rmSync(path.join(dir, name), { recursive: true, force: true }); removed++; } catch (e) {}
+    });
+  });
+  return removed;
+}
+
 function parseArgs(argv) {
-  var out = { dest: null, force: false, only: null };
+  var out = { dest: null, force: false, only: null, prune: null };
   for (var i = 0; i < argv.length; i++) {
     var a = argv[i];
     if (a === "--force") { out.force = true; continue; }
+    if (a === "--prune") { out.prune = true; continue; }
+    if (a === "--no-prune") { out.prune = false; continue; }
     if (a.indexOf("--repo=") === 0) { out.only = a.slice("--repo=".length); continue; }
     if (a.charAt(0) !== "-" && !out.dest) { out.dest = a; continue; }
   }
@@ -556,6 +618,15 @@ function main() {
   var cfg = readJsonSafe(CONFIG_FILE);
   if (!cfg) { err("init", "config not found or invalid: " + CONFIG_FILE); process.exit(1); }
 
+  var pluginRoot = resolvePluginRoot(args.dest);
+
+  // Prune-only mode: remove inactive items and stop.
+  if (args.prune === true && args.dest && pluginRoot) {
+    var prunedOnly = pruneInactive(pluginRoot, cfg);
+    log("prune", "removed " + prunedOnly + " inactive item(s)");
+    return;
+  }
+
   var repos = (cfg.repos || []).filter(function (r) {
     if (!r || !r.enabled) return false;
     if (args.only && r.name !== args.only) return false;
@@ -564,10 +635,13 @@ function main() {
 
   if (!repos.length) {
     log("init", "no enabled repos to sync");
+    // Still prune (config may have just disabled everything).
+    if (pluginRoot && args.prune !== false && !args.only) {
+      var pn = pruneInactive(pluginRoot, cfg);
+      if (pn > 0) log("prune", "removed " + pn + " inactive item(s)");
+    }
     return;
   }
-
-  var pluginRoot = resolvePluginRoot(args.dest);
   var totalInstalled = { skill: 0, agent: 0, command: 0, hook: 0 };
   var totalSkipped = 0;
 
@@ -598,6 +672,13 @@ function main() {
     log(repo.name, "installed " + totalsToString(t) + " [" + res.reason + "]");
   }
 
+  // Curation: after a FULL sync (no --repo filter, prune not disabled), remove
+  // items belonging to disabled/removed repos so config changes take effect.
+  if (pluginRoot && !args.only && args.prune !== false) {
+    var pruned = pruneInactive(pluginRoot, cfg);
+    if (pruned > 0) log("prune", "removed " + pruned + " inactive item(s)");
+  }
+
   if (pluginRoot) {
     log("done", "installed " + totalsToString(totalInstalled) + "; " + totalSkipped + " repo(s) up-to-date");
   }
@@ -619,5 +700,8 @@ module.exports = {
   localHeadSha: localHeadSha,
   getCacheRoot: getCacheRoot,
   resolvePluginRoot: resolvePluginRoot,
-  walkMdFiles: walkMdFiles
+  walkMdFiles: walkMdFiles,
+  ownedPrefixes: ownedPrefixes,
+  pruneInactive: pruneInactive,
+  MANAGED_PREFIXES: MANAGED_PREFIXES
 };

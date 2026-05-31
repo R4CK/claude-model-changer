@@ -1,5 +1,53 @@
 # Changelog
 
+## v3.8.0 — Skill curation, durability, and test coverage
+
+Four quality improvements driven by the realization that the 7 auto-synced
+repos add **~100k tokens of context** every session (Claude Code loads every
+skill name + description). For a plugin whose whole point is cost savings,
+that's worth managing.
+
+### Skill curation + `/skills-status`
+
+- **`/skills-status`** (new command + `--skills-status`): per-repo inventory
+  (skills/agents/commands installed), enabled state, last-synced commit, and a
+  per-repo estimate of the **context tokens** it adds. Shows the active total so
+  you can see what the sync is costing you.
+- **Prune on disable**: setting `"enabled": false` on a repo in
+  `config/external-skills.json` now actually frees context — the next sync runs
+  a prune step that removes that repo's already-installed items. Previously
+  disabling only stopped *future* syncing; the old items lingered.
+- Prune only ever touches items under a managed prefix (`acs-`, `ecc-`, `od-`,
+  `nlb-`, `obs-`, `sp-`, `rf-`, `rfp-`) — built-in items (`model-router`, the
+  worker agents, the plugin's own commands) are never removed.
+- Manual prune: `node scripts/sync-external-skills.js <pluginRoot> --prune`.
+  Disable with `--no-prune`.
+
+### Durability — `atomic-io.js`
+
+- `atomicWriteJson` now `fsync`s the temp file before the rename, so an OS
+  crash/power-loss right after the rename can't leave a zero-length or truncated
+  JSON. Best-effort (never changes the success path). Closes the last open item
+  from the v3.6.2 concurrency audit.
+
+### Test coverage
+
+- **+33 unit tests** (79 → 112) covering the previously-untested subsystems:
+  SemVer parse/compare and the dev-checkout guard (`plugin-self-update.js`), the
+  `.md` walker + frontmatter filter, source-layout normalization, and the
+  curation prune logic (`sync-external-skills.js`). All auto-discovered by
+  `tests/run-all.js`, which CI already runs on every PR.
+
+### Files
+
+- **New:** `scripts/skills-status.js`, `commands/skills-status.md`,
+  `tests/self-update.test.js`, `tests/sync-skills.test.js`
+- **Modified:** `scripts/sync-external-skills.js` (prune + ownedPrefixes),
+  `scripts/analyze-complexity.js` (`--skills-status`), `scripts/lib/atomic-io.js`
+  (fsync)
+
+---
+
 ## v3.7.1 — Installer auto-wires the terminal statusline
 
 The plugin already shipped `statusline.js` and a `/statusline` command, but

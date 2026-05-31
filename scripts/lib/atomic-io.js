@@ -58,7 +58,19 @@ function atomicWriteJson(filepath, data) {
     var dir = path.dirname(filepath);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
-    fs.writeFileSync(tmp, JSON.stringify(data, null, 2), "utf8");
+    // v3.8.0: fsync the temp file's data to disk BEFORE the rename. Without
+    // this, the rename can become durable while the file's bytes are still in
+    // the OS page cache — an OS crash/power loss right after could leave a
+    // zero-length or truncated JSON. fsync is best-effort (some filesystems
+    // reject it) and never changes the success path.
+    var json = JSON.stringify(data, null, 2);
+    var fd = fs.openSync(tmp, "w");
+    try {
+      fs.writeSync(fd, json, null, "utf8");
+      try { fs.fsyncSync(fd); } catch (e) { /* best-effort durability */ }
+    } finally {
+      fs.closeSync(fd);
+    }
     // rename is atomic on both POSIX and Windows (with replace semantics in Node >= 18)
     fs.renameSync(tmp, filepath);
     return true;

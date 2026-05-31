@@ -612,6 +612,15 @@ process.stdin.on("end", function() {
           return "# error generating metrics: " + e.message + "\n";
         }
       },
+      "--skills-status": function() {
+        // v3.8.0: external skills sync status (per-repo inventory + context cost)
+        try {
+          var ss = require("./skills-status");
+          return JSON.stringify(ss.buildStatus(), null, 2);
+        } catch (e) {
+          return "skills-status error: " + e.message;
+        }
+      },
       "--quota": function() {
         // v3.2.0: Quota state report
         var qaCfg = configModule.loadConfig(cwd);
