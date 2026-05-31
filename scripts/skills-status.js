@@ -29,34 +29,16 @@ function readJsonSafe(p) {
   } catch (e) { return null; }
 }
 
-function countByPrefix(dir, prefixes) {
-  var n = 0;
-  if (!fs.existsSync(dir)) return 0;
-  var entries;
-  try { entries = fs.readdirSync(dir); } catch (e) { return 0; }
-  entries.forEach(function (name) {
-    for (var i = 0; i < prefixes.length; i++) {
-      if (name.indexOf(prefixes[i]) === 0) { n++; break; }
-    }
-  });
-  return n;
-}
-
-function approxItemTokens(dir, prefixes) {
-  // Claude Code loads each skill's name + SKILL.md description. We approximate
-  // by reading the first ~400 bytes of each item's SKILL.md / the .md file and
-  // dividing characters by 4. Cheap and good enough for an overhead estimate.
+// Approximate the context tokens a list of items adds (Claude Code loads each
+// skill/agent name + description). Reads ~400 bytes of each item's SKILL.md / md
+// file, chars/4. Cheap upper-bound estimate.
+function approxTokensFor(kindDir, names) {
+  var dir = path.join(PLUGIN_ROOT, kindDir);
   var total = 0;
-  if (!fs.existsSync(dir)) return 0;
-  var entries;
-  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { return 0; }
-  entries.forEach(function (e) {
-    var owned = false;
-    for (var i = 0; i < prefixes.length; i++) { if (e.name.indexOf(prefixes[i]) === 0) { owned = true; break; } }
-    if (!owned) return;
-    var mdPath = e.isDirectory()
-      ? path.join(dir, e.name, "SKILL.md")
-      : path.join(dir, e.name);
+  names.forEach(function (name) {
+    var p = path.join(dir, name);
+    var mdPath = p;
+    try { if (fs.statSync(p).isDirectory()) mdPath = path.join(p, "SKILL.md"); } catch (e) { return; }
     try {
       var fd = fs.openSync(mdPath, "r");
       var buf = Buffer.alloc(400);
@@ -84,27 +66,25 @@ function readStamp(file, key) {
 
 function buildStatus() {
   var cfg = readJsonSafe(CONFIG_FILE) || { repos: [] };
-  var skillsDir = path.join(PLUGIN_ROOT, "skills");
-  var agentsDir = path.join(PLUGIN_ROOT, "agents");
-  var commandsDir = path.join(PLUGIN_ROOT, "commands");
+  // The manifest records exactly which items each repo installed (after the
+  // first-wins dedup), so per-repo counts come straight from it — no prefixes.
+  var manifest = readJsonSafe(sync.manifestPath(PLUGIN_ROOT)) || {};
 
   var repos = (cfg.repos || []).map(function (r) {
-    var prefixes = sync.ownedPrefixes(r);
+    var m = manifest[r.name] || {};
+    var skills = m.skill || [];
+    var agents = m.agent || [];
+    var commands = m.command || [];
     return {
       name: r.name,
       url: r.url,
       enabled: r.enabled !== false,
-      prefixes: prefixes,
       lastSyncedSha: localSha(r.name),
-      installed: {
-        skills: countByPrefix(skillsDir, prefixes),
-        agents: countByPrefix(agentsDir, prefixes),
-        commands: countByPrefix(commandsDir, prefixes)
-      },
+      installed: { skills: skills.length, agents: agents.length, commands: commands.length },
       approxContextTokens:
-        approxItemTokens(skillsDir, prefixes) +
-        approxItemTokens(agentsDir, prefixes) +
-        approxItemTokens(commandsDir, prefixes)
+        approxTokensFor("skills", skills) +
+        approxTokensFor("agents", agents) +
+        approxTokensFor("commands", commands)
     };
   });
 
@@ -138,7 +118,7 @@ function formatHuman(st) {
   st.repos.forEach(function (r) {
     var flag = r.enabled ? "✓" : "✗ disabled";
     var inv = r.installed.skills + " skills, " + r.installed.agents + " agents, " + r.installed.commands + " cmds";
-    lines.push(flag + "  " + r.name + "  [" + (r.prefixes.join(", ") || "—") + "]  sha=" + (r.lastSyncedSha || "?"));
+    lines.push(flag + "  " + r.name + "  sha=" + (r.lastSyncedSha || "?"));
     lines.push("     " + inv + "  · ~" + r.approxContextTokens + " ctx tokens");
   });
   lines.push("");

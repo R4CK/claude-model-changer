@@ -1,5 +1,56 @@
 # Changelog
 
+## v3.9.0 — Original repo names (no invented prefixes) + dedup + manifest
+
+Per user direction: synced skills/agents/commands now keep their **original
+names** from the source repos. The invented prefixes (`od-`, `acs-`, `ecc-`,
+`rf-`, `rfp-`, `rfc-`, `sp-`, `nlb-`, `obs-`) are **gone** — what you see is
+exactly what the repos ship.
+
+### What changed
+
+- **Original names everywhere.** `config/external-skills.json` no longer adds a
+  `destPrefix`/`destFolderName` prefix; `nested-md` and `plugin-multi` use the
+  item's original basename instead of a flattened/prefixed path.
+- **First-wins dedup.** When the same name appears in more than one repo (49
+  skill names, 12 agent names across the 7 repos), the first repo in config
+  order wins and later duplicates are skipped. Result: exactly one item per
+  name, no duplicates — verified on a full sync (76 dups skipped, 0 duplicate
+  skill folders, **0 duplicate agent frontmatter names**).
+- **Agent collisions handled by identity, not rename.** Agents are deduped on
+  their frontmatter `name:` (what Claude Code keys on), so two agents can never
+  silently shadow each other — without inventing names.
+- **Manifest-based provenance.** Prefixes were how prune/`/skills-status` knew
+  which repo owned an item. That's now `logs/external-skills-manifest.json`
+  (repo → installed item names). The prune step became `reconcile()`: after a
+  full sync it removes any previously-synced item not in the new manifest
+  (disabled repos, deleted-upstream items), and **never touches built-ins**
+  (model-router, the worker agents, the plugin's own commands).
+- **Re-sync model.** Dedup is global + order-sensitive, so any remote change (or
+  config change, detected via a config signature) triggers one full re-walk;
+  when nothing changed the sync still short-circuits in ~seconds.
+
+### Plumbing
+
+- `.gitignore`: ignores everything under `skills/`, `agents/*.md`,
+  `commands/*.md` except the tracked built-ins (git never ignores tracked
+  files), since synced items no longer have a matchable prefix.
+- `build-installer.js`: the bundle is now built from `git ls-files` (tracked
+  files only), so a dev worktree full of synced items produces the exact same
+  bundle as a clean CI checkout.
+- `plugin-self-update.js`: dropped the obsolete prefix-skip (the self-clone is a
+  git checkout and never contains synced items).
+- Tests updated (112 pass): `readItemName` (agent identity), `reconcile`
+  (manifest prune keeps built-ins / drops disabled+deleted).
+
+### Note on collisions
+
+A few names exist in multiple repos (e.g. `brand-guidelines`, `canvas-design`,
+`ui-ux-pro-max`). First-wins by config order decides which copy you get. To
+prefer a specific repo's version, move it earlier in `config/external-skills.json`.
+
+---
+
 ## v3.8.2 — Add ruflo's `.claude/skills` (Claude-Code-native variants)
 
 ruflo ships its skills in two trees: `.agents/skills` (its own agent framework,

@@ -1,7 +1,7 @@
 {
   "$schema": "./external-skills.schema.json",
-  "version": "2.0",
-  "description": "Auto-synced external skill/agent/command sources. sync-external-skills.js clones each repo on first run, then on subsequent runs only fetches/copies when the remote HEAD has changed. Each repo can declare multiple `sources` — one per kind (skill, agent, command, hook). Items are mirrored into the plugin's skills/, agents/, commands/, hooks/ dirs under per-repo prefixes to avoid name collisions.",
+  "version": "3.0",
+  "description": "Auto-synced external skill/agent/command sources. Items keep their ORIGINAL names from the source repos — no prefixes are added. When the same name appears in more than one repo, the first repo (in this list's order) wins and later duplicates are skipped, so there is exactly one item per name. Provenance is tracked in logs/external-skills-manifest.json (used by prune + /skills-status) instead of name prefixes.",
   "sync": {
     "enabled": true,
     "intervalHours": 24,
@@ -17,7 +17,6 @@
           "kind": "skill",
           "layout": "subfolder",
           "skillsPath": "skills",
-          "destPrefix": "od-",
           "excludeFolders": []
         }
       ]
@@ -30,7 +29,7 @@
         {
           "kind": "skill",
           "layout": "root-single",
-          "destFolderName": "nlb-ui-ux-pro-max"
+          "destFolderName": "ui-ux-pro-max"
         }
       ]
     },
@@ -42,7 +41,6 @@
         {
           "kind": "skill",
           "layout": "root-multi",
-          "destPrefix": "acs-",
           "excludeFolders": ["composio-skills", "connect-apps-plugin", "document-skills"]
         }
       ]
@@ -55,20 +53,17 @@
         {
           "kind": "skill",
           "layout": "subfolder",
-          "skillsPath": "skills",
-          "destPrefix": "ecc-"
+          "skillsPath": "skills"
         },
         {
           "kind": "agent",
           "layout": "flat-md",
-          "skillsPath": "agents",
-          "destPrefix": "ecc-"
+          "skillsPath": "agents"
         },
         {
           "kind": "command",
           "layout": "flat-md",
-          "skillsPath": "commands",
-          "destPrefix": "ecc-"
+          "skillsPath": "commands"
         }
       ]
     },
@@ -80,8 +75,7 @@
         {
           "kind": "skill",
           "layout": "subfolder",
-          "skillsPath": "skills",
-          "destPrefix": "sp-"
+          "skillsPath": "skills"
         }
       ]
     },
@@ -93,27 +87,23 @@
         {
           "kind": "skill",
           "layout": "subfolder",
-          "skillsPath": ".agents/skills",
-          "destPrefix": "rf-"
+          "skillsPath": ".agents/skills"
         },
         {
           "kind": "skill",
           "layout": "subfolder",
-          "skillsPath": ".claude/skills",
-          "destPrefix": "rfc-"
+          "skillsPath": ".claude/skills"
         },
         {
           "kind": "agent",
           "layout": "nested-md",
           "skillsPath": ".claude/agents",
-          "destPrefix": "rf-",
           "excludeFolders": []
         },
         {
           "kind": "command",
           "layout": "nested-md",
           "skillsPath": ".claude/commands",
-          "destPrefix": "rf-",
           "excludeFolders": []
         },
         {
@@ -121,24 +111,21 @@
           "layout": "plugin-multi",
           "skillsPath": "plugins",
           "innerPath": "skills",
-          "innerLayout": "subfolder",
-          "destPrefix": "rfp-"
+          "innerLayout": "subfolder"
         },
         {
           "kind": "agent",
           "layout": "plugin-multi",
           "skillsPath": "plugins",
           "innerPath": "agents",
-          "innerLayout": "flat-md",
-          "destPrefix": "rfp-"
+          "innerLayout": "flat-md"
         },
         {
           "kind": "command",
           "layout": "plugin-multi",
           "skillsPath": "plugins",
           "innerPath": "commands",
-          "innerLayout": "flat-md",
-          "destPrefix": "rfp-"
+          "innerLayout": "flat-md"
         }
       ]
     },
@@ -150,8 +137,7 @@
         {
           "kind": "skill",
           "layout": "subfolder",
-          "skillsPath": "skills",
-          "destPrefix": "obs-"
+          "skillsPath": "skills"
         }
       ]
     }

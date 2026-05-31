@@ -36,12 +36,11 @@ h.describe("sync.getRepoSources", function (it) {
     assert.strictEqual(srcs[1].kind, "agent");
   });
   it("synthesizes a single skill source from the legacy flat format", function () {
-    var repo = { name: "r", layout: "root-multi", destPrefix: "x-" };
+    var repo = { name: "r", layout: "root-multi" };
     var srcs = sync.getRepoSources(repo);
     assert.strictEqual(srcs.length, 1);
     assert.strictEqual(srcs[0].kind, "skill");
     assert.strictEqual(srcs[0].layout, "root-multi");
-    assert.strictEqual(srcs[0].destPrefix, "x-");
   });
 });
 
@@ -89,56 +88,55 @@ h.describe("sync.getCacheRoot", function (it) {
   });
 });
 
-h.describe("sync.ownedPrefixes", function (it) {
-  it("collects destPrefix from each source", function () {
-    var repo = { name: "ruflo", sources: [
-      { kind: "skill", destPrefix: "rf-" },
-      { kind: "agent", destPrefix: "rf-" },
-      { kind: "skill", destPrefix: "rfp-" }
-    ] };
-    assert.deepStrictEqual(sync.ownedPrefixes(repo).sort(), ["rf-", "rfp-"]);
+h.describe("sync.readItemName (agent identity)", function (it) {
+  var dir = fs.mkdtempSync(path.join(os.tmpdir(), "cmc-rin-"));
+  it("reads frontmatter name", function () {
+    var f = path.join(dir, "a.md");
+    fs.writeFileSync(f, "---\nname: architect\ndescription: x\n---\nbody");
+    assert.strictEqual(sync.readItemName(f, "a.md"), "architect");
   });
-  it("derives a leading prefix from destFolderName", function () {
-    var repo = { name: "x", sources: [{ kind: "skill", layout: "root-single", destFolderName: "nlb-ui-ux-pro-max" }] };
-    assert.deepStrictEqual(sync.ownedPrefixes(repo), ["nlb-"]);
+  it("falls back to filename without .md when no frontmatter name", function () {
+    var f = path.join(dir, "b.md");
+    fs.writeFileSync(f, "# no frontmatter");
+    assert.strictEqual(sync.readItemName(f, "b.md"), "b");
   });
+  it("(cleanup)", function () { fs.rmSync(dir, { recursive: true, force: true }); assert.ok(true); });
 });
 
-h.describe("sync.pruneInactive", function (it) {
-  var root = fs.mkdtempSync(path.join(os.tmpdir(), "cmc-prune-"));
+h.describe("sync.reconcile (manifest-based prune)", function (it) {
+  var root = fs.mkdtempSync(path.join(os.tmpdir(), "cmc-recon-"));
   ["skills", "agents", "commands"].forEach(function (d) { fs.mkdirSync(path.join(root, d)); });
-  // Built-in (must survive) + active repo item + disabled repo item.
+  // Built-ins (never in a manifest → must survive)
   fs.mkdirSync(path.join(root, "skills", "model-router"));
-  fs.mkdirSync(path.join(root, "skills", "od-color-expert"));     // active (open-design enabled)
-  fs.mkdirSync(path.join(root, "skills", "ecc-python-patterns"));  // disabled (ecc off)
-  fs.writeFileSync(path.join(root, "agents", "haiku-worker.md"), "x");   // built-in
-  fs.writeFileSync(path.join(root, "agents", "ecc-architect.md"), "x");  // disabled
-  fs.writeFileSync(path.join(root, "commands", "stats.md"), "x");        // built-in
-  fs.writeFileSync(path.join(root, "commands", "rf-foo.md"), "x");       // disabled (ruflo off)
+  fs.writeFileSync(path.join(root, "agents", "haiku-worker.md"), "x");
+  fs.writeFileSync(path.join(root, "commands", "stats.md"), "x");
+  // Synced items: one still wanted, one now-disabled, one deleted-upstream
+  fs.mkdirSync(path.join(root, "skills", "color-expert"));      // active
+  fs.mkdirSync(path.join(root, "skills", "python-patterns"));   // disabled repo
+  fs.writeFileSync(path.join(root, "agents", "architect.md"), "x"); // deleted upstream
 
-  var cfg = { repos: [
-    { name: "open-design", enabled: true, sources: [{ kind: "skill", destPrefix: "od-" }] },
-    { name: "everything-claude-code", enabled: false, sources: [{ kind: "skill", destPrefix: "ecc-" }] },
-    { name: "ruflo", enabled: false, sources: [{ kind: "skill", destPrefix: "rf-" }, { kind: "skill", destPrefix: "rfp-" }] }
-  ] };
+  var oldManifest = {
+    "open-design": { skill: ["color-expert"] },
+    "everything-claude-code": { skill: ["python-patterns"], agent: ["architect.md"] }
+  };
+  var newManifest = {
+    "open-design": { skill: ["color-expert"] }
+    // ecc gone (disabled) → its items must be removed
+  };
+  var removed = sync.reconcile(root, oldManifest, newManifest);
 
-  var removed = sync.pruneInactive(root, cfg);
-
-  it("removes the right number of inactive items", function () {
-    assert.strictEqual(removed, 3); // ecc-python-patterns, ecc-architect.md, rf-foo.md
+  it("removes items no longer in the new manifest", function () {
+    assert.strictEqual(removed, 2); // python-patterns + architect.md
+    assert.ok(!fs.existsSync(path.join(root, "skills", "python-patterns")));
+    assert.ok(!fs.existsSync(path.join(root, "agents", "architect.md")));
   });
-  it("keeps built-in items (model-router, haiku-worker, stats)", function () {
-    assert.ok(fs.existsSync(path.join(root, "skills", "model-router")), "model-router removed!");
-    assert.ok(fs.existsSync(path.join(root, "agents", "haiku-worker.md")), "haiku-worker removed!");
-    assert.ok(fs.existsSync(path.join(root, "commands", "stats.md")), "stats.md removed!");
+  it("keeps active synced items", function () {
+    assert.ok(fs.existsSync(path.join(root, "skills", "color-expert")));
   });
-  it("keeps active-repo items (od-)", function () {
-    assert.ok(fs.existsSync(path.join(root, "skills", "od-color-expert")), "active od- item removed!");
-  });
-  it("removes disabled-repo items (ecc-, rf-)", function () {
-    assert.ok(!fs.existsSync(path.join(root, "skills", "ecc-python-patterns")));
-    assert.ok(!fs.existsSync(path.join(root, "agents", "ecc-architect.md")));
-    assert.ok(!fs.existsSync(path.join(root, "commands", "rf-foo.md")));
+  it("never touches built-ins (not in any manifest)", function () {
+    assert.ok(fs.existsSync(path.join(root, "skills", "model-router")));
+    assert.ok(fs.existsSync(path.join(root, "agents", "haiku-worker.md")));
+    assert.ok(fs.existsSync(path.join(root, "commands", "stats.md")));
   });
   it("(cleanup fixture)", function () {
     fs.rmSync(root, { recursive: true, force: true });
