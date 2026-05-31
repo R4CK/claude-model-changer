@@ -1,5 +1,24 @@
 # Changelog
 
+## v3.8.1 — Fix: self-update couldn't read its own version on a real install
+
+The v3.7.0 self-update read the running version from `package.json`, but the
+bundled installer (`install.js`) deliberately **excludes** `package.json` from
+the installed cache copy — so on every real (bundle) install, the self-update
+silently no-op'd with "cannot read local version". It only worked in tests
+(which staged a `package.json`) and on dev/source installs.
+
+Fix: read the local version from `.install-version` first (always written by
+both installers and by the self-update itself), falling back to `package.json`
+for dev/source installs. Verified end-to-end against a real-shaped install
+(only `.install-version`, no `package.json`): `3.5.0 → upstream` upgrade
+completes, registry repoints, orphan removed.
+
+This is what made the plugin's "keeps itself current" promise real — before
+3.8.1 it was effectively inert on normal installs.
+
+---
+
 ## v3.8.0 — Skill curation, durability, and test coverage
 
 Four quality improvements driven by the realization that the 7 auto-synced

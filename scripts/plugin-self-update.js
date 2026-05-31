@@ -164,9 +164,20 @@ function main() {
 
   if (!hasGit()) { log("git not available — skipping"); return; }
 
-  var localPkg = readJsonSafe(path.join(PLUGIN_ROOT, "package.json"));
-  var localVersion = localPkg && localPkg.version;
-  if (!localVersion) { log("cannot read local version — skipping"); return; }
+  // v3.8.1: read the local version from `.install-version` FIRST. The bundled
+  // installer (install.js) deliberately excludes package.json from the cache,
+  // so on a real install it isn't present — only `.install-version` is. Falling
+  // back to package.json keeps dev/source installs and self-update-created dirs
+  // working too. (Before this fix, self-update silently no-op'd on every real
+  // install because it couldn't read the running version.)
+  var localVersion = null;
+  var installMarker = readJsonSafe(path.join(PLUGIN_ROOT, ".install-version"));
+  if (installMarker && installMarker.version) localVersion = installMarker.version;
+  if (!localVersion) {
+    var localPkg = readJsonSafe(path.join(PLUGIN_ROOT, "package.json"));
+    localVersion = localPkg && localPkg.version;
+  }
+  if (!localVersion) { log("cannot read local version (.install-version / package.json) — skipping"); return; }
 
   var owner = detectMarketplaceOwner();
   var cloneParent = path.join(home, ".claude", "plugins", "cache", owner, "external", "_self-update");
