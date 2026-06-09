@@ -87,10 +87,22 @@ function loadConfig(cwd) {
 
   if (cwd) {
     var projectConfigPath = path.join(cwd, ".claude", "model-routing.json");
-    try {
-      var projectConfig = JSON.parse(fs.readFileSync(projectConfigPath, "utf8"));
-      baseConfig = deepMerge(baseConfig || {}, projectConfig);
-    } catch (err) {}
+    // A missing project config is the common case and must stay silent. But a
+    // project config that EXISTS yet fails to parse was previously swallowed
+    // here, silently dropping the user's project-level routing rules while they
+    // believed those rules were in effect. Distinguish the two: warn only when
+    // the file is present but unreadable (mirrors the loud base-config handling
+    // at the top of loadConfig). Also strip a BOM so a Windows-written project
+    // config doesn't fail to parse.
+    if (fs.existsSync(projectConfigPath)) {
+      try {
+        var projectRaw = fs.readFileSync(projectConfigPath, "utf8").replace(/^\uFEFF/, "");
+        baseConfig = deepMerge(baseConfig || {}, JSON.parse(projectRaw));
+      } catch (err) {
+        process.stderr.write("[Model Router] Project config error: could not parse " +
+          projectConfigPath + " - " + err.message + " (project routing rules ignored)\n");
+      }
+    }
   }
 
   // T1.1 (v2.4.1): never return null from loadConfig. A corrupt or missing

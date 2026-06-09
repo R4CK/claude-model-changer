@@ -5,6 +5,7 @@ logs/*.html
 logs/*.log
 logs/*.flag
 logs/*.md
+logs/.last-rotation
 !logs/.gitkeep
 
 # Runtime caches

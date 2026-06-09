@@ -13,11 +13,11 @@
 var fs = require("fs");
 var path = require("path");
 var atomicIo = require("./lib/atomic-io");
+var io = require("./lib/io");
 
 var LOGS_DIR = path.join(__dirname, "..", "logs");
 var FALLBACK_LOG = path.join(LOGS_DIR, "fallbacks.jsonl");
 var SESSION_PATH = path.join(LOGS_DIR, "session-state.json");
-var USAGE_LOG_PATH = path.join(LOGS_DIR, "usage.jsonl");
 var FALLBACK_PATTERN = /\[FALLBACK:(\w+)\]/;
 
 function ensureLogDir() {
@@ -77,7 +77,11 @@ process.stdin.on("end", function() {
         var subEntry = { timestamp: new Date().toISOString(), model: detectedModel, source: "subagent",
           category: "delegated-task", score: detectedModel === "haiku" ? 2 : detectedModel === "sonnet" ? 5 : 9,
           level: detectedModel === "haiku" ? "SIMPLE" : detectedModel === "sonnet" ? "MEDIUM" : "COMPLEX", autoRouted: true };
-        fs.appendFileSync(USAGE_LOG_PATH, JSON.stringify(subEntry) + "\n");
+        // v3.10.x: route through the shared logger instead of a bespoke
+        // fs.appendFileSync. This keeps usage.jsonl writes on a single code
+        // path that invalidates io's file cache, applies size-based trim, and
+        // sanitizes NaN numeric fields — none of which the raw append did.
+        io.logUsage(subEntry);
 
         process.stderr.write("[detect-fallback] Auto-logged " + detectedModel + " subagent from agent: " + agentName + "\n");
       } catch (logErr) {

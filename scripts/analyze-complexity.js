@@ -42,11 +42,29 @@ var contextAudit = require("./lib/context-audit");
 var fallbackLearn = require("./lib/fallback-learn");
 var lastRouting = require("./lib/last-routing");
 var profileManager = require("./lib/profile-manager");
+var modelConstants = require("./lib/model-constants");
+var LEVEL_BY_MODEL = modelConstants.LEVEL_BY_MODEL;
+var SCORE_BY_MODEL = modelConstants.SCORE_BY_MODEL;
+var PERSONA_BY_MODEL = modelConstants.PERSONA_BY_MODEL;
 
-// Startup cleanup: rotate debug log + trim all JSONL logs
+// Startup cleanup: rotate debug log + trim all JSONL logs.
+// This hook runs as a fresh process on EVERY prompt, so module-level state does
+// not persist across invocations. The unconditional version below stat'd 5 log
+// files on every single prompt (10 sync FS ops) just to find that none needed
+// trimming — the logs are self-correcting (trimLog brings a file back under the
+// threshold), so a size check every prompt is wasteful. Throttle via a single
+// on-disk marker: skip the whole sweep unless ~10 min have elapsed since the
+// last one. Common path is now 1 statSync instead of 10.
 io.rotateDebugLog();
 (function startupLogRotation() {
+  var THROTTLE_MS = 10 * 60 * 1000;
   try {
+    var markerPath = path.join(__dirname, "..", "logs", ".last-rotation");
+    try {
+      var mst = fs.statSync(markerPath);
+      if (Date.now() - mst.mtimeMs < THROTTLE_MS) return; // checked recently — skip sweep
+    } catch (e) { /* no marker yet — proceed with sweep */ }
+
     var logFiles = [
       { path: io.getLogPath(), max: io.CONSTANTS.MAX_USAGE_ENTRIES },
       { path: io.getOverrideLogPath(), max: io.CONSTANTS.MAX_OVERRIDE_ENTRIES },
@@ -62,6 +80,9 @@ io.rotateDebugLog();
         }
       } catch (e) {}
     });
+
+    // Touch the marker so the next ~10 min of prompts skip the sweep.
+    try { io.ensureLogDir(); fs.writeFileSync(markerPath, ""); } catch (e) {}
   } catch (e) {}
 })();
 
@@ -112,7 +133,7 @@ function detectFastMode(hookInput, config) {
       if (home) {
         var settingsPath = path.join(home, ".claude", "settings.json");
         if (fs.existsSync(settingsPath)) {
-          var raw = fs.readFileSync(settingsPath, "utf8").replace(/^﻿/, "");
+          var raw = fs.readFileSync(settingsPath, "utf8").replace(/^\uFEFF/, "");
           var s = JSON.parse(raw);
           if (s && s.fastMode === true) return { active: true, source: "~/.claude/settings.json fastMode" };
         }
@@ -150,8 +171,8 @@ function analyzeComplexity(prompt, config, cwd, sessionId, hookInput) {
   var override = scoring.detectManualOverride(prompt, config);
   if (override) {
     return {
-      score: { haiku: 2, sonnet: 5, opus: 9 }[override],
-      level: { haiku: "SIMPLE", sonnet: "MEDIUM", opus: "COMPLEX" }[override],
+      score: SCORE_BY_MODEL[override],
+      level: LEVEL_BY_MODEL[override],
       model: override, override: true,
       matchedCategory: "Manual override", reason: "User requested " + override,
       borderline: { isBorderline: false }, autoRoute: false,
@@ -168,14 +189,14 @@ function analyzeComplexity(prompt, config, cwd, sessionId, hookInput) {
     // quota state and a basic effort decision so saved patterns can still
     // be downgraded under quota pressure and emit a thinking-budget hint.
     var pmModel = patternMatch.model;
-    var pmLevel = { haiku: "SIMPLE", sonnet: "MEDIUM", opus: "COMPLEX" }[pmModel];
+    var pmLevel = LEVEL_BY_MODEL[pmModel];
     var pmQuotaState = null, pmQuotaDowngrade = null;
     try {
       pmQuotaState = quotaTracker.getQuotaState(config);
       pmQuotaDowngrade = quotaTracker.shouldDowngrade(pmModel, pmQuotaState, config);
       if (pmQuotaDowngrade && pmQuotaDowngrade.downgrade) {
         pmModel = pmQuotaDowngrade.toModel;
-        pmLevel = { haiku: "SIMPLE", sonnet: "MEDIUM", opus: "COMPLEX" }[pmModel] || pmLevel;
+        pmLevel = LEVEL_BY_MODEL[pmModel] || pmLevel;
       }
     } catch (e) {}
     var pmEffortLevel = pmModel === "haiku" ? "low" : (pmModel === "opus" ? "high" : "medium");
@@ -183,7 +204,7 @@ function analyzeComplexity(prompt, config, cwd, sessionId, hookInput) {
       ? config.effort.thinkingBudgets[pmEffortLevel]
       : ({ low: 0, medium: 5000, high: 16000 })[pmEffortLevel];
     return {
-      score: { haiku: 2, sonnet: 5, opus: 9 }[patternMatch.model],
+      score: SCORE_BY_MODEL[patternMatch.model],
       level: pmLevel, model: pmModel, override: false,
       matchedCategory: patternMatch.label, reason: "Matched saved pattern: \"" + patternMatch.pattern + "\"",
       borderline: { isBorderline: false }, autoRoute: true,
@@ -373,7 +394,7 @@ function analyzeComplexity(prompt, config, cwd, sessionId, hookInput) {
       finalScore = Math.max(1, Math.min(10, finalScore));
     } else if (keywordInfluence === "boost") {
       // Nudge score by +/-2 toward target range without forcing
-      var targetCenter = { haiku: 2, sonnet: 5, opus: 9 }[keywordResult.matchedModel] || 5;
+      var targetCenter = SCORE_BY_MODEL[keywordResult.matchedModel] || 5;
       var nudge = targetCenter > finalScore ? 2 : targetCenter < finalScore ? -2 : 0;
       finalScore = Math.max(1, Math.min(10, finalScore + nudge));
       // Re-derive model from adjusted score
@@ -392,7 +413,7 @@ function analyzeComplexity(prompt, config, cwd, sessionId, hookInput) {
     var allowSkillOverride = !(config && config.skillIntegration && config.skillIntegration.overrideRouting === false);
     if (allowSkillOverride) {
       model = skillTrigger.suggestedModel;
-      level = ({ haiku: "SIMPLE", sonnet: "MEDIUM", opus: "COMPLEX" })[model] || level;
+      level = (LEVEL_BY_MODEL)[model] || level;
     }
   }
 
@@ -401,17 +422,17 @@ function analyzeComplexity(prompt, config, cwd, sessionId, hookInput) {
   // last "explicit user-intent" override before stickiness/quota.
   if (agentTeamsRole && agentTeamsRole.suggestedModel) {
     model = agentTeamsRole.suggestedModel;
-    level = ({ haiku: "SIMPLE", sonnet: "MEDIUM", opus: "COMPLEX" })[model] || level;
+    level = (LEVEL_BY_MODEL)[model] || level;
   }
 
   var stickiness = session.getSessionStickiness(prompt, sessionId, model, config);
   // Score delta guard: stickiness should not suppress large upgrades (>3 score difference)
-  var stickyModelCenter = { haiku: 2, sonnet: 5, opus: 9 };
+  var stickyModelCenter = SCORE_BY_MODEL;
   if (stickiness.sticky && !scoring.shouldAutoRoute(finalScore, config, confidence.confidence)) {
     var stickyCenter = stickyModelCenter[stickiness.stickyModel] || 5;
     if (Math.abs(finalScore - stickyCenter) <= 3) {
       model = stickiness.stickyModel;
-      level = { haiku: "SIMPLE", sonnet: "MEDIUM", opus: "COMPLEX" }[model] || level;
+      level = LEVEL_BY_MODEL[model] || level;
     } else {
       stickiness.sticky = false;
       stickiness.reason = "Score delta too large (" + finalScore + " vs " + stickyCenter + "), overriding stickiness";
@@ -474,7 +495,7 @@ function analyzeComplexity(prompt, config, cwd, sessionId, hookInput) {
     quotaDowngrade = quotaTracker.shouldDowngrade(model, quotaState, config);
     if (quotaDowngrade && quotaDowngrade.downgrade) {
       model = quotaDowngrade.toModel;
-      level = ({ haiku: "SIMPLE", sonnet: "MEDIUM", opus: "COMPLEX" })[model] || level;
+      level = (LEVEL_BY_MODEL)[model] || level;
     }
   } catch (e) { /* never break routing */ }
 
@@ -524,7 +545,11 @@ process.stdin.setEncoding("utf8");
 process.stdin.on("data", function(chunk) { input += chunk; });
 process.stdin.on("end", function() {
   try {
-    var data = JSON.parse(input);
+    // Strip a leading UTF-8 BOM before parsing. Some callers (e.g. a Windows
+    // PowerShell `... | node`) prepend a BOM to the piped stdin, which makes
+    // JSON.parse throw and drops the whole hook into the outer error handler.
+    // The config/log readers already strip BOM the same way; stdin did not.
+    var data = JSON.parse(input.replace(/^\uFEFF/, ""));
 
     // T1.2 (v2.4.1): defensive stdin validation. Previously `data.prompt`
     // silently defaulted to "" if the JSON structure was wrong, hiding
@@ -863,7 +888,7 @@ process.stdin.on("end", function() {
     var contextRec = contextMonitor.getContextRecommendation(contextUsage, result.model, config, session.loadSessionState);
     if (contextRec.adjusted) {
       result.model = contextRec.model;
-      result.level = { haiku: "SIMPLE", sonnet: "MEDIUM", opus: "COMPLEX" }[result.model];
+      result.level = LEVEL_BY_MODEL[result.model];
     }
 
     var apiLimits = monitors.checkApiRateLimits(config, sessionId, session.loadSessionState);
@@ -1244,7 +1269,7 @@ process.stdin.on("end", function() {
       }
     } else {
       lines.push("ROUTING: " + result.level + " complexity (score " + result.score + "/10).");
-      lines.push("Ask: \"" + result.level + " task (score " + result.score + "/10, category: " + result.matchedCategory + "). Route to **" + result.model + "-worker** for " + ({ haiku: "fast", sonnet: "balanced", opus: "thorough" }[result.model] || "balanced") + " handling? Or prefer haiku/sonnet/opus?\"");
+      lines.push("Ask: \"" + result.level + " task (score " + result.score + "/10, category: " + result.matchedCategory + "). Route to **" + result.model + "-worker** for " + (PERSONA_BY_MODEL[result.model] || "balanced") + " handling? Or prefer haiku/sonnet/opus?\"");
       lines.push("If confirmed, delegate to " + result.model + "-worker. If different model chosen, use that worker instead and note the override for /tune.");
       lines.push("If the task is trivially simple (like a direct question), you may answer directly without delegating.");
     }
