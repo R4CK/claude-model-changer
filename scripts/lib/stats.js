@@ -10,12 +10,25 @@ var search = require("./search");
 
 // ---- PATTERNS (B2) ----
 
+// Hot-path cache: loadPatterns runs on every prompt but patterns.json rarely
+// changes. Mirror the mtime-signature caching that config.js already uses so
+// we skip the read+parse when the file is unchanged. A single statSync is the
+// only per-call cost on a cache hit. An empty/truncated file (read === "")
+// would throw in JSON.parse; the catch returns [] as before.
+var _patternsCache = null; // { sig, patterns }
+
 function loadPatterns() {
   try {
     var pPath = io.getPatternsPath();
-    if (!fs.existsSync(pPath)) return [];
-    var data = JSON.parse(fs.readFileSync(pPath, "utf8").replace(/^\uFEFF/, ""));
-    return data.patterns || [];
+    var st;
+    try { st = fs.statSync(pPath); } catch (e) { _patternsCache = null; return []; }
+    var sig = st.mtimeMs + ":" + st.size;
+    if (_patternsCache && _patternsCache.sig === sig) return _patternsCache.patterns;
+
+    var raw = fs.readFileSync(pPath, "utf8").replace(/^\uFEFF/, "").trim();
+    var patterns = raw.length === 0 ? [] : (JSON.parse(raw).patterns || []);
+    _patternsCache = { sig: sig, patterns: patterns };
+    return patterns;
   } catch (err) { return []; }
 }
 

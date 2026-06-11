@@ -35,7 +35,7 @@ function save(record) {
 function load() {
   try {
     if (!fs.existsSync(LAST_FILE)) return null;
-    return JSON.parse(fs.readFileSync(LAST_FILE, "utf8").replace(/^﻿/, ""));
+    return JSON.parse(fs.readFileSync(LAST_FILE, "utf8").replace(/^\uFEFF/, ""));
   } catch (e) { return null; }
 }
 

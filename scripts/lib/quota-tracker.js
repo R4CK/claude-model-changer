@@ -55,6 +55,24 @@ function windowCounts(entries, windowMs) {
 //    pressure: { opus: 0..1, sonnet: 0..1, all: 0..1 },
 //    overWeeklyOpus: bool, overBurstAll: bool
 //  }
+// Hot-path cache: getQuotaState runs on every prompt and otherwise re-reads +
+// fully parses usage.jsonl (up to MAX_USAGE_ENTRIES lines) each time. Cache the
+// computed state keyed by the usage file's mtime+size signature so repeated
+// calls within a prompt — and across prompts until the log changes — are free.
+// The window math uses Date.now(), so we also expire after a short TTL to keep
+// the rolling 5h/weekly cutoffs honest even when the file hasn't changed.
+var _quotaCache = null; // { sig, planSig, state, at }
+var _QUOTA_TTL_MS = 60 * 1000;
+
+function _usageSignature() {
+  try {
+    var st = fs.statSync(USAGE_FILE);
+    return st.mtimeMs + ":" + st.size;
+  } catch (e) {
+    return "missing";
+  }
+}
+
 function getQuotaState(config) {
   var planLimits = (config && config.planLimits) || {};
   var weeklyAll = planLimits.weeklyAllModels || 200;
@@ -62,6 +80,14 @@ function getQuotaState(config) {
   var weeklySonnet = planLimits.weeklySonnet || 50;
   var weeklyHaiku = planLimits.weeklyHaiku || 100;
   var burstAll = planLimits.burst5hAllModels || planLimits.sessionLimit || 50;
+
+  // Cache check: same usage file + same plan limits + within TTL → reuse.
+  var sig = _usageSignature();
+  var planSig = weeklyAll + "/" + weeklyOpus + "/" + weeklySonnet + "/" + weeklyHaiku + "/" + burstAll;
+  if (_quotaCache && _quotaCache.sig === sig && _quotaCache.planSig === planSig &&
+      (Date.now() - _quotaCache.at) < _QUOTA_TTL_MS) {
+    return _quotaCache.state;
+  }
 
   var entries = readJsonl(USAGE_FILE);
   var weekly = windowCounts(entries, 7 * 24 * 3600 * 1000);
@@ -76,7 +102,7 @@ function getQuotaState(config) {
     all: weeklyAll > 0 ? Math.min(1, weekly.all / weeklyAll) : 0
   };
 
-  return {
+  var state = {
     weekly: weekly,
     weeklyLimits: { haiku: weeklyHaiku, sonnet: weeklySonnet, opus: weeklyOpus, all: weeklyAll },
     weeklyPct: {
@@ -93,6 +119,9 @@ function getQuotaState(config) {
     overWeeklyAll: pressure.all >= 1,
     overBurstAll: burstAll > 0 && burst.all >= burstAll
   };
+
+  _quotaCache = { sig: sig, planSig: planSig, state: state, at: Date.now() };
+  return state;
 }
 
 // Decide if an opus recommendation should be downgraded based on quota pressure.
