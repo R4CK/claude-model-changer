@@ -15,10 +15,11 @@
 var fs = require("fs");
 var path = require("path");
 var sessionUtils = require("../session-utils");
+var atomicIo = require("./atomic-io");
 
 // Per-sessionId state isolation: use session-specific files when available
 function getSessionPath(sessionId) {
-  if (!sessionId || sessionId === "unknown" || sessionId === "__handoff__") {
+  if (!sessionId || typeof sessionId !== "string" || sessionId === "unknown" || sessionId === "__handoff__") {
     return sessionUtils.SESSION_PATH;
   }
   var shortId = sessionId.replace(/[^a-zA-Z0-9-]/g, "").substring(0, 12);
@@ -44,15 +45,13 @@ function saveSessionState(state) {
   var sessionPath = getSessionPath(sessionId);
   // Always save to default path (enforce-stats reads it)
   sessionUtils.saveSessionState(state);
-  // Also save to session-specific path if different
+  // Also save to session-specific path if different. Routed through
+  // atomic-io's atomicWriteJson, which uses a pid+timestamp+random temp
+  // filename (unique per call, not just per process) so two concurrent
+  // saves for the same session can't collide on the same temp path.
   if (sessionPath !== sessionUtils.SESSION_PATH) {
-    try {
-      var tmpPath = sessionPath + "." + process.pid + ".tmp";
-      fs.writeFileSync(tmpPath, JSON.stringify(state));
-      fs.renameSync(tmpPath, sessionPath);
-    } catch (err) {
-      process.stderr.write("[session] Failed to write session-specific state at " + sessionPath + ": " + err.message + "\n");
-      try { fs.unlinkSync(sessionPath + "." + process.pid + ".tmp"); } catch (e) {}
+    if (!atomicIo.atomicWriteJson(sessionPath, state)) {
+      process.stderr.write("[session] Failed to write session-specific state at " + sessionPath + "\n");
     }
   }
 }
@@ -115,12 +114,21 @@ function getPromptHistoryBoost(prompt, sessionId, config) {
     var currentWords = extractTopicWords(prompt);
     if (currentWords.length === 0) return { boost: 0 };
 
+    // Ignore prompts older than maxAgeMinutes (default 60) - recentPrompts
+    // persists in session-state.json, so without a time check a prompt from
+    // hours/days ago would still count at full weight toward similarity-based
+    // boosting.
+    var maxAgeMinutes = (config && config.promptHistory && typeof config.promptHistory.maxAgeMinutes === "number")
+      ? config.promptHistory.maxAgeMinutes : 60;
+    var cutoff = Date.now() - maxAgeMinutes * 60000;
+
     // Check similarity against recent prompts
     var maxSimilarity = 0;
     var relatedModel = null;
     var relatedCategory = null;
     state.recentPrompts.forEach(function(rp) {
       if (!rp.words || rp.words.length === 0) return;
+      if (rp.timestamp && Date.parse(rp.timestamp) < cutoff) return;
       var sim = calculateTopicSimilarity(currentWords, rp.words);
       if (sim > maxSimilarity) {
         maxSimilarity = sim;

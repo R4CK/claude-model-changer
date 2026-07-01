@@ -55,13 +55,22 @@ function windowCounts(entries, windowMs) {
 //    pressure: { opus: 0..1, sonnet: 0..1, all: 0..1 },
 //    overWeeklyOpus: bool, overBurstAll: bool
 //  }
+// `||` treats an explicit 0 (user intentionally disabling a limit) the same
+// as "unset" and falls through to the default. Use this instead wherever the
+// config value is a plan limit, so 0 stays 0.
+function numOrDefault(v, d) {
+  return typeof v === "number" && isFinite(v) ? v : d;
+}
+
 function getQuotaState(config) {
   var planLimits = (config && config.planLimits) || {};
-  var weeklyAll = planLimits.weeklyAllModels || 200;
-  var weeklyOpus = planLimits.weeklyOpus || 30;
-  var weeklySonnet = planLimits.weeklySonnet || 50;
-  var weeklyHaiku = planLimits.weeklyHaiku || 100;
-  var burstAll = planLimits.burst5hAllModels || planLimits.sessionLimit || 50;
+  var weeklyAll = numOrDefault(planLimits.weeklyAllModels, 200);
+  var weeklyOpus = numOrDefault(planLimits.weeklyOpus, 30);
+  var weeklySonnet = numOrDefault(planLimits.weeklySonnet, 50);
+  var weeklyHaiku = numOrDefault(planLimits.weeklyHaiku, 100);
+  var burstAll = typeof planLimits.burst5hAllModels === "number" && isFinite(planLimits.burst5hAllModels)
+    ? planLimits.burst5hAllModels
+    : numOrDefault(planLimits.sessionLimit, 50);
 
   var entries = readJsonl(USAGE_FILE);
   var weekly = windowCounts(entries, 7 * 24 * 3600 * 1000);

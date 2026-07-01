@@ -6,13 +6,14 @@
  * If detected, logs the fallback event and outputs a re-routing instruction.
  *
  * Reads from stdin: { "response": "...", "session_id": "..." }
- * Used as a SubagentComplete or Stop hook.
+ * Wired into hooks.json as a SubagentStop hook.
  */
 "use strict";
 
 var fs = require("fs");
 var path = require("path");
 var atomicIo = require("./lib/atomic-io");
+var lastRouting = require("./lib/last-routing");
 
 var LOGS_DIR = path.join(__dirname, "..", "logs");
 var FALLBACK_LOG = path.join(LOGS_DIR, "fallbacks.jsonl");
@@ -34,6 +35,13 @@ process.stdin.on("end", function() {
     var sessionId = data.session_id || "unknown";
 
     // ---- Auto-log subagent model from agent name ----
+    // KNOWN LIMITATION: Claude Code's standard SubagentStop payload does not
+    // currently include an agent name/type field - only session_id,
+    // transcript_path, and stop_hook_active. This block only fires on
+    // harness versions/configurations that do pass one of the fields below;
+    // otherwise agentName stays "" and this entire block is a no-op (matched
+    // model stays null, no counters increment). Not a crash - just dead
+    // weight until the hook payload carries the invoking agent's identity.
     var agentName = data.agent_name || data.agentName || data.subagent_type || "";
     var detectedModel = null;
     // Use word-boundary matching to avoid false positives (e.g. "philosophiku" matching "haiku")
@@ -94,10 +102,25 @@ process.stdin.on("end", function() {
     var validModels = ["haiku", "sonnet", "opus"];
     if (validModels.indexOf(targetModel) === -1) { process.exit(0); }
 
-    // Detect source model from context
-    var sourceModel = "unknown";
-    if (response.includes("[FALLBACK:sonnet]")) sourceModel = "haiku";
-    else if (response.includes("[FALLBACK:opus]")) sourceModel = "sonnet";
+    // Detect source model. Prefer the model actually derived from the calling
+    // agent's name (computed above); it reflects who really emitted the marker
+    // instead of guessing from a fixed haiku->sonnet->opus escalation ladder,
+    // which misattributes the source if the marker text is merely quoted/
+    // referenced by an agent running at a different tier.
+    var sourceModel = detectedModel || "unknown";
+    if (sourceModel === "unknown") {
+      if (response.includes("[FALLBACK:sonnet]")) sourceModel = "haiku";
+      else if (response.includes("[FALLBACK:opus]")) sourceModel = "sonnet";
+    }
+
+    // Pull the category of the routing decision that dispatched this session,
+    // so fallback-learn.js can group fallback rates by category instead of
+    // every entry falling into "unknown" and being skipped.
+    var fallbackCategory = null;
+    try {
+      var lr = lastRouting.load();
+      if (lr && lr.sessionId === sessionId && lr.category) fallbackCategory = lr.category;
+    } catch (e) {}
 
     // Log the fallback event
     ensureLogDir();
@@ -105,6 +128,7 @@ process.stdin.on("end", function() {
       timestamp: new Date().toISOString(),
       fromModel: sourceModel,
       toModel: targetModel,
+      category: fallbackCategory,
       reason: "Agent emitted FALLBACK marker",
       sessionId: sessionId,
       autoDetected: true

@@ -70,15 +70,11 @@ function estimateContextUsage(sessionId, prompt, config, loadSessionState) {
       state = resetSessionState(sessionId);
     }
 
-    // Per-model context window. Opus 4.7 supports 1M context via the [1m] suffix.
-    // Pick the window for the most recently used model, falling back to opus default.
+    // Per-model context window (Sonnet/Opus default to 1M; Haiku to 200K).
+    // Pick the window for the most recently used model, falling back to the configured default.
     var lastModel = state.lastModel || "opus";
-    var modelIds = (config.modelIds || {});
-    var lastModelId = modelIds[lastModel] || "";
-    var ctxKey = lastModel;
-    if (lastModelId.indexOf("[1m]") !== -1) ctxKey = lastModel + "-1m";
     var contextWindows = (config.contextWindows || {});
-    var maxTokens = contextWindows[ctxKey] || contextWindows[lastModel] || config.contextMonitor.maxContextTokens || 200000;
+    var maxTokens = contextWindows[lastModel] || config.contextMonitor.maxContextTokens || 200000;
 
     var promptTokens = estimateTokens(prompt);
     var promptCount = (state.promptCount || 0) + 1;

@@ -1,5 +1,84 @@
 # Changelog
 
+## v3.11.0 — Model catalog refresh (Sonnet 5 / Opus 4.8, correct pricing) + fallback-learning chain fix
+
+### Stale model catalog and deprecated thinking API (user-visible)
+
+The routing config still pointed at last-generation models and priced Opus at
+**3x actual cost**:
+
+- `config/task-routing.json`: Opus pricing was `$15/$75` per 1M tokens — the
+  real current price is **`$5/$25`**. Every cost preview and `/stats` estimate
+  was inflated 3x.
+- Removed the fictional `opus-1m` / `claude-opus-4-7[1m]` model variant.
+  Opus and Sonnet both ship with a **1M context window by default** now —
+  there's no separate, differently-priced "[1m]" SKU. `contextWindows.sonnet`
+  was also stale at 200K.
+- `modelIds` bumped to current-generation `claude-sonnet-5` / `claude-opus-4-8`
+  (was `claude-sonnet-4-6` / `claude-opus-4-7`).
+- The "Effort" line no longer emits a raw `thinking budget: N tokens` figure —
+  `thinking.budget_tokens` is removed/deprecated on Claude 4.6+ models and
+  400s on Sonnet 5 / Opus 4.7+ / Fable 5. It now surfaces the actual current
+  API shape: `thinking: {type:"adaptive"}, output_config.effort:"<level>"`.
+- `statusline.js` / `context-monitor.js` no longer special-case a `[1m]`
+  suffix to pick a context window — they just read `contextWindows[model]`.
+
+### Fallback-learning chain was silently dead end-to-end
+
+The "auto-learn from fallback events" feature (a hook that's supposed to
+notice a category's haiku→sonnet fallback rate and pre-emptively route it
+higher) never produced a real boost:
+
+- `detect-fallback.js` never wrote a `category` field to `fallbacks.jsonl` —
+  every entry landed in `"unknown"`, which `fallback-learn.js` explicitly
+  skips. Fixed: the hook now reads the category off `last-routing.json` for
+  the matching session and logs it.
+- Even where a category *did* have fallback events, `fallback-learn.js`'s
+  rate calculation used `usageByCat[cat] || fbByCat[cat]` as the denominator —
+  if there was no matching usage record, it divided the fallback count by
+  itself, guaranteeing a fake 100% fallback rate and an automatic boost. Fixed
+  to skip the category instead of fabricating a denominator.
+- `detect-fallback.js`'s "which model fell back" inference used to always
+  assume a fixed haiku→sonnet→opus ladder based only on which marker string
+  appeared, regardless of which agent actually ran. It now prefers the model
+  actually detected from the calling agent's name, falling back to the ladder
+  guess only when that's unavailable.
+
+### Other fixes (found during a full code-level audit)
+
+- `pre-tool-router.js`: git-commit stats logged `diff: undefined` on every
+  commit (it never computed a real diff), silently zeroing out every
+  `/git-router-stats` aggregate (avgDiffLines, largestDiffLines,
+  commitsByRecommendedModel). Now computes real diff stats and a model
+  recommendation via the same helper `git-commit-hook.js` uses standalone.
+- `session.js`: `saveSessionState` now writes the per-session file through
+  `atomic-io.js`'s `atomicWriteJson` (unique temp filename per call) instead
+  of a bespoke `write+rename` with a pid-only temp name that could collide
+  across concurrent saves in the same process. `getSessionPath` also guards
+  against a non-string `sessionId` (previously threw `TypeError`).
+- `session.js`: `getPromptHistoryBoost` now ignores prompts older than
+  `promptHistory.maxAgeMinutes` (default 60) — previously a prompt from days
+  ago still counted at full weight toward similarity-based score boosting.
+- `quota-tracker.js`: plan limits read via `||` treated an explicit `0`
+  (user intentionally disabling a limit) the same as "unset" and silently
+  fell back to the default. Fixed with an explicit `typeof === "number"` check.
+- `scoring.js`: removed a dead unreachable branch in `shouldAutoRoute`;
+  documented (not changed) the HU/DE tie-break fallback to `"en"`.
+- `config.js`: config validation now flags a scoring weight key that's
+  missing entirely, not just one present with an invalid value — previously
+  a missing key silently contributed 0 to the sum check and could still pass.
+- `benchmark-cache.js`: documented that `time` must be milliseconds (the
+  30000ms normalization cap silently assumed it with no unit callout).
+- `preflight.js`: `checkHooksReference` now resolves each hook script's
+  transitive `require("./...")` dependencies too, so a deleted dependency
+  (e.g. `pre-tool-router.js` → `./context-bloat-detect`) is caught at
+  preflight instead of only crashing at the next `PreToolUse` call.
+- `atomic-io.js`: corrected a doc comment overstating the merge guarantee —
+  there is still a residual TOCTOU gap between the freshness check and the
+  rename (no lock); it bounds staleness, it does not eliminate the race.
+
+---
+
 ## v3.10.1 — Fix: self-update crashed on copy (SYNCED_PREFIXES regression)
 
 v3.9.0 removed the `SYNCED_PREFIXES` *declaration* from `plugin-self-update.js`

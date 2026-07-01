@@ -53,6 +53,8 @@ function detectLanguage(prompt) {
   // still hit. Single-match-noise risk is mitigated by the extended-list
   // bias toward IT terms (English short prompts won't accidentally match
   // 2 IT-specific HU/DE stems).
+  // A tie (huCount === deCount, both >= 2) falls through to "en" rather than
+  // guessing - a prompt matching both HU and DE stems is genuinely ambiguous.
   if (huCount >= 2 && huCount > deCount) return "hu";
   if (deCount >= 2 && deCount > huCount) return "de";
   return "en";
@@ -290,8 +292,6 @@ function shouldAutoRoute(score, config, confidence) {
   // Confidence-based: if confidence >= 90%, auto-route even in borderline zones
   var conf = (typeof confidence === "number") ? confidence : 0;
   if (conf >= 90) return true;
-  // If confidence < 30%, never auto-route regardless of score
-  if (conf > 0 && conf < 30) return false;
   return false;
 }
 

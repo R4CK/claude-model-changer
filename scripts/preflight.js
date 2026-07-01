@@ -257,6 +257,35 @@ function checkJsonValid() {
   }
 }
 
+// Resolve every relative require("./x") / require("../x") a script transitively
+// pulls in, so a hook wired into hooks.json but crashing on a deleted
+// dependency (e.g. pre-tool-router.js requiring ./context-bloat-detect) is
+// caught here instead of only at PreToolUse runtime. Depth-bounded + visited-
+// set guarded to tolerate cycles between sibling lib modules.
+function collectTransitiveRequires(entryAbsPath, visited, missing) {
+  if (visited[entryAbsPath]) return;
+  visited[entryAbsPath] = true;
+  var content;
+  try {
+    content = fs.readFileSync(entryAbsPath, "utf8");
+  } catch (e) {
+    return; // entryAbsPath itself is reported missing by the caller
+  }
+  var re = /require\(\s*["'](\.\.?\/[^"']+)["']\s*\)/g;
+  var m;
+  var dir = path.dirname(entryAbsPath);
+  while ((m = re.exec(content)) !== null) {
+    var resolved = path.resolve(dir, m[1]);
+    if (path.extname(resolved) === "") resolved += ".js";
+    if (!fs.existsSync(resolved)) {
+      missing.push(path.relative(PLUGIN_ROOT, resolved).replace(/\\/g, "/") +
+        " (required by " + path.relative(PLUGIN_ROOT, entryAbsPath).replace(/\\/g, "/") + ")");
+      continue;
+    }
+    collectTransitiveRequires(resolved, visited, missing);
+  }
+}
+
 function checkHooksReference() {
   // Cross-check: every script referenced from hooks/hooks.json must exist
   var hooksPath = path.join(PLUGIN_ROOT, "hooks", "hooks.json");
@@ -273,15 +302,19 @@ function checkHooksReference() {
       if (unique.indexOf(matches[i]) === -1) unique.push(matches[i]);
     }
     var missing = [];
+    var visited = {};
     for (var j = 0; j < unique.length; j++) {
-      if (!fs.existsSync(path.join(PLUGIN_ROOT, unique[j]))) {
+      var abs = path.join(PLUGIN_ROOT, unique[j]);
+      if (!fs.existsSync(abs)) {
         missing.push(unique[j]);
+        continue;
       }
+      collectTransitiveRequires(abs, visited, missing);
     }
     if (missing.length) {
-      add("Hook script references", false, "hooks reference missing scripts: " + missing.join(", "));
+      add("Hook script references", false, "hooks reference missing scripts (directly or transitively): " + missing.join(", "));
     } else {
-      add("Hook script references", true, unique.length + " referenced, all present");
+      add("Hook script references", true, unique.length + " referenced, all present (including transitive requires)");
     }
   } catch (err) {
     add("Hook script references", false, err.message, false);

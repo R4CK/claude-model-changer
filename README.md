@@ -4,7 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D16-brightgreen)](package.json)
-[![Plugin Version](https://img.shields.io/badge/plugin-v3.10.1-blue)](.claude-plugin/plugin.json)
+[![Plugin Version](https://img.shields.io/badge/plugin-v3.11.0-blue)](.claude-plugin/plugin.json)
 [![CI](https://github.com/R4CK/claude-model-changer/actions/workflows/preflight.yml/badge.svg)](https://github.com/R4CK/claude-model-changer/actions/workflows/preflight.yml)
 [![Latest Release](https://img.shields.io/github/v/release/R4CK/claude-model-changer)](https://github.com/R4CK/claude-model-changer/releases/latest)
 
@@ -15,8 +15,8 @@
 On every prompt, this plugin:
 
 1. **Scores the task** on a 1–10 complexity scale using a weighted heuristic (keywords, file paths, code blocks, multi-file indicators, structural cues, language, MCP-tool density).
-2. **Maps the score to a model**: Haiku 4.5 (1–3), Sonnet 4.6 (4–7), Opus 4.7 (8–10) — with optional 1M context for Opus.
-3. **Recommends a thinking budget** (low / medium / high) so downstream tooling can set `thinking.budget_tokens` appropriately.
+2. **Maps the score to a model**: Haiku 4.5 (1–3), Sonnet 5 (4–7), Opus 4.8 (8–10) — Sonnet and Opus both default to a 1M context window.
+3. **Recommends an effort level** (low / medium / high) so downstream tooling can set `thinking: {type: "adaptive"}` + `output_config.effort` appropriately.
 4. **Routes the work** to the matching subagent — automatically for high-confidence cases, with a confirmation prompt for borderline scores.
 5. **Watches your quota** — auto-downgrades Opus → Sonnet when your weekly Opus usage approaches the limit.
 6. **Tracks context bloat** — flags repeated reads of the same file so you don't waste tokens.
@@ -40,6 +40,7 @@ The plugin has matured significantly since v3.0.0. Quick tour:
 
 | Version | Theme | Key features |
 |---|---|---|
+| **v3.11.0** | Model catalog refresh + fallback-learning fix | Sonnet 5 / Opus 4.8 model IDs, corrected Opus pricing ($5/$25, was stale at $15/$75), removed fictional `opus-1m` variant (1M context is now the Opus/Sonnet default), effort output now shows the current adaptive-thinking API shape instead of a deprecated raw token budget, fallback-learning chain now actually produces boosts (category tagging + fixed rate calculation), git-commit stats regression fix, several session/config/quota hardening fixes |
 | **v3.4.0** | Keyword expansion + bugfix | Vocabulary expanded by **+232 IT-jargon keywords** across all 30 categories (EN +81, HU +75, DE +76). Fix for `reaktorozd` → `refaktoráld` (the original word was nuclear-reactor jargon, not software). HU/DE language detection threshold lowered from 3 → 2 with stem-based heuristics so terse 2-3 word prompts (`refaktorozd a kódot`, `Bug beheben`) reliably trigger their language path. |
 | **v3.3.0** | 7 community features | Fallback feedback loop (auto-learn from `[FALLBACK:sonnet]`), `/whatif` config simulator, proactive compact suggestion (context % + topic-shift), `/undo` last routing, token estimator preview, weekly digest (markdown narrative), multi-profile / multi-account switching |
 | **v3.2.3** | README refresh | Documentation only — covers v3.0.0 → v3.2.2 features |
@@ -145,14 +146,14 @@ After installing (see above) and restarting Claude Code:
 2. Plugin routes to **haiku** automatically:
    ```
    [Model Router] Complexity: SIMPLE (score 1/10) -> Recommended: haiku
-   Tokens preview: ~7 in + ~1500 out → $0.0075 at haiku (haiku $0.0075 · sonnet $0.0225 · opus $0.1126)
-   Effort: low (trivial category 'typo_fix') | thinking budget: 0 tokens
+   Tokens preview: ~7 in + ~1500 out → $0.0075 at haiku (haiku $0.0075 · sonnet $0.0225 · opus $0.0375)
+   Effort: low (trivial category 'typo_fix') | thinking: {type:"adaptive"}, output_config.effort:"low"
    ```
 3. Try a harder one — `design a multi-tenant cache invalidation strategy`
 4. Plugin routes to **opus** (automatic at high confidence):
    ```
    [Model Router] Complexity: COMPLEX (score 9/10) -> Recommended: opus
-   Effort: high (category 'system_design' is in highCategories) | thinking budget: 16000 tokens
+   Effort: high (category 'system_design' is in highCategories) | thinking: {type:"adaptive"}, output_config.effort:"high"
    ```
 5. Run `/stats` to see the saved cost so far. Run `/quota` to see your weekly budget. Run `/dashboard` for a visual.
 
@@ -177,9 +178,8 @@ Run `/stats` in a Claude Code session to see your actual savings vs an all-Opus 
 | Model | Input $/1M | Output $/1M | Relative | Context |
 |---|---|---|---|---|
 | Haiku 4.5 | $1.00 | $5.00 | 1× | 200K |
-| Sonnet 4.6 | $3.00 | $15.00 | 3× | 200K |
-| Opus 4.7 | $15.00 | $75.00 | 15× | 200K |
-| Opus 4.7 [1m] | $15.00 | $75.00 | 15× | **1M** |
+| Sonnet 5 | $3.00 | $15.00 | 3× | **1M** |
+| Opus 4.8 | $5.00 | $25.00 | 5× | **1M** |
 
 ---
 
@@ -244,7 +244,7 @@ Your prompt
 ┌──────────────────────────────────────────────────────┐
 │ Effort decision (parallel pipeline)                  │
 │  determineEffort → memory hint nudge → fast mode     │
-│   → low / medium / high + thinking budget hint       │
+│   → low / medium / high + adaptive-thinking effort   │
 └──────────────────────────────────────────────────────┘
 ```
 
@@ -388,8 +388,8 @@ All new behavior is config-gated. Set any to `enabled: false` to revert to legac
 
 ```json
 {
-  "modelIds": { "haiku": "claude-haiku-4-5", "sonnet": "claude-sonnet-4-6", "opus": "claude-opus-4-7", "opus-1m": "claude-opus-4-7[1m]" },
-  "contextWindows": { "haiku": 200000, "sonnet": 200000, "opus": 200000, "opus-1m": 1000000 },
+  "modelIds": { "haiku": "claude-haiku-4-5", "sonnet": "claude-sonnet-5", "opus": "claude-opus-4-8" },
+  "contextWindows": { "haiku": 200000, "sonnet": 1000000, "opus": 1000000 },
 
   "fastMode": { "enabled": true, "detectFromUserSettings": true },
   "memoryIntegration": { "enabled": true, "influenceEffort": true },

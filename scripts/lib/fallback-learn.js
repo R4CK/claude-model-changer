@@ -104,7 +104,16 @@ function compute(config) {
   var summary = { categories: {}, totalBoosted: 0, threshold: cfg.rateThreshold };
   Object.keys(fbByCat).forEach(function(cat) {
     if (cat === "unknown") return;
-    var total = usageByCat[cat] || fbByCat[cat];
+    // Fallback counts are a subset of usage counts for the same category (a
+    // fallback only happens after a routed usage event), so a missing/zero
+    // usageByCat[cat] means we have no real denominator to judge against -
+    // NOT that every attempt fell back. Skip rather than faking total =
+    // fbByCat[cat] (which forced rate = 1.0 / a guaranteed boost).
+    var total = usageByCat[cat];
+    if (!total) {
+      summary.categories[cat] = { rate: null, fallbacks: fbByCat[cat], total: 0, skipped: "no usage data for category" };
+      return;
+    }
     var rate = fbByCat[cat] / total;
     var samples = total;
     var detail = { rate: rate, fallbacks: fbByCat[cat], total: samples };

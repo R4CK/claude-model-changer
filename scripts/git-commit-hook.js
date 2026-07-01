@@ -149,4 +149,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { classify: classify, recommendModelForDiff: recommendModelForDiff, checkForcePush: checkForcePush };
+module.exports = { classify: classify, recommendModelForDiff: recommendModelForDiff, checkForcePush: checkForcePush, getDiffSize: getDiffSize };
