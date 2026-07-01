@@ -98,10 +98,7 @@ function buildStatus(stdinJson, opts) {
   if (state.estimatedTokensUsed && state.estimatedTokensUsed > 0) {
     var maxTokens = 200000;
     var contextWindows = (opts.config && opts.config.contextWindows) || {};
-    var modelIds = (opts.config && opts.config.modelIds) || {};
-    var lastModelId = modelIds[lastModel] || "";
-    var ctxKey = lastModelId.indexOf("[1m]") !== -1 ? lastModel + "-1m" : lastModel;
-    if (contextWindows[ctxKey]) maxTokens = contextWindows[ctxKey];
+    if (contextWindows[lastModel]) maxTokens = contextWindows[lastModel];
     var pct = Math.round((state.estimatedTokensUsed / maxTokens) * 100);
     ctx = "ctx " + pct + "%";
   }

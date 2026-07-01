@@ -170,6 +170,16 @@ function validateConfig(config) {
         errors.push("scoring.weights." + k + " must be finite number between 0 and 1 (got: " + w[k] + ")");
       } else if (subScoreKeys.indexOf(k) !== -1) { sum += w[k]; }
     });
+    // A key missing entirely from `w` (as opposed to present-but-invalid)
+    // silently contributes 0 to `sum` above without ever being flagged - a
+    // config missing a whole required weight could still pass the sum-~1.0
+    // check below if the remaining weights happen to total ~1.0. Check
+    // presence explicitly.
+    subScoreKeys.forEach(function(k) {
+      if (!Object.prototype.hasOwnProperty.call(w, k)) {
+        errors.push("scoring.weights." + k + " is missing (required sub-score weight)");
+      }
+    });
     // Sub-score weights (excluding contextBoost) should sum to ~1.0
     if (isNaN(sum) || !isFinite(sum) || Math.abs(sum - 1.0) > 0.15) {
       errors.push("scoring.weights (keyword+multiFile+structure+wordCount+codeBlocks) should sum to ~1.0 (currently " + (isNaN(sum) ? "NaN" : sum.toFixed(2)) + ")");

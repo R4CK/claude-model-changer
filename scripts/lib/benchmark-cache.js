@@ -16,6 +16,9 @@ var CACHE_PATH = io.getBenchmarkLogPath();
  * Save a benchmark result for a category.
  * @param {string} category - Task category
  * @param {Object} results - { haiku: {time, quality, tokens}, sonnet: {...}, opus: {...} }
+ *   `time` MUST be in milliseconds - getBestModelForCategory below normalizes
+ *   it against a 30000ms (30s) cap. A caller logging `time` in seconds would
+ *   silently saturate timeNorm to ~1, making speed dominate the quality score.
  */
 function saveBenchmarkResult(category, results) {
   try {

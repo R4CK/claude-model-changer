@@ -1019,12 +1019,14 @@ process.stdin.on("end", function() {
     }
 
     // v2.7.0: Emit Effort recommendation (orthogonal to model - reasoning budget)
-    // v3.1.0: Also emit the suggested extended-thinking budget when configured.
+    // v3.1.0: Also emit the API shape needed to apply it, when configured.
+    // Note: on Claude 4.6+ models, manual `thinking.budget_tokens` is removed/deprecated -
+    // depth is now controlled via `thinking: {type: "adaptive"}` + `output_config.effort`.
     var effortCfg = config && config.effort;
     if (effortCfg && effortCfg.enabled !== false && effortCfg.emitInOutput !== false && result.effort && result.effort.level) {
       var effortLine = "Effort: " + result.effort.level + " (" + result.effort.reason + ")";
-      if (effortCfg.emitThinkingBudget !== false && typeof result.effort.thinkingBudget === "number") {
-        effortLine += " | thinking budget: " + result.effort.thinkingBudget + " tokens";
+      if (effortCfg.emitThinkingBudget !== false) {
+        effortLine += " | thinking: {type:\"adaptive\"}, output_config.effort:\"" + result.effort.level + "\"";
       }
       lines.push(effortLine);
     }

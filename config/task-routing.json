@@ -545,22 +545,20 @@
       "label": "balanced cost/performance"
     },
     "opus": {
-      "inputPer1M": 15,
-      "outputPer1M": 75,
+      "inputPer1M": 5,
+      "outputPer1M": 25,
       "label": "most capable, highest cost"
     }
   },
   "modelIds": {
     "haiku": "claude-haiku-4-5",
-    "sonnet": "claude-sonnet-4-6",
-    "opus": "claude-opus-4-7",
-    "opus-1m": "claude-opus-4-7[1m]"
+    "sonnet": "claude-sonnet-5",
+    "opus": "claude-opus-4-8"
   },
   "contextWindows": {
     "haiku": 200000,
-    "sonnet": 200000,
-    "opus": 200000,
-    "opus-1m": 1000000
+    "sonnet": 1000000,
+    "opus": 1000000
   },
   "fastMode": {
     "enabled": true,

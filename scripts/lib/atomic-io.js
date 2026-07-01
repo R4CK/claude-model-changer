@@ -108,8 +108,11 @@ function safeReadJson(filepath) {
  *
  * Guarantees:
  *   - No partial reads: readers never see a half-written file.
- *   - Last-write-wins semantics, but every write was applied to the latest
- *     state the writer saw at the moment of the write.
+ *   - Last-write-wins semantics, but every write was computed from the state
+ *     the writer last read - not necessarily the state at the instant the
+ *     write itself lands. A concurrent writer can still slip in between the
+ *     pre-write freshness check and the rename (a residual TOCTOU gap; there
+ *     is no lock), so this bounds staleness, it does not eliminate races.
  *   - Never hangs: bounded by MAX_RETRIES and MAX_TOTAL_WAIT_MS.
  *
  * @param {string} filepath

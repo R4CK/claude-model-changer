@@ -67,11 +67,18 @@ function runGit(data, cfg) {
   if (!op) return null;
   var msgs = [];
   var gitCfg = (cfg && cfg.gitHooks) || {};
+  var diff = null;
+  var recommended = null;
   if (op === "commit") {
-    // We can't easily import getDiffSize without re-spawning git; just emit
-    // a routing reminder and let the user decide. The dedicated git-commit-hook
-    // (still callable directly) handles diff stats when invoked standalone.
-    msgs.push("[Git Router] Commit detected. For diff-aware model routing, see /git-router-stats.");
+    // Compute the actual diff stats (same helper git-commit-hook.js uses when
+    // invoked standalone) so the logged entry carries real diff/recommended
+    // fields - previously this only emitted an advisory message and logged
+    // diff: undefined, which silently zeroed out every --git-router-stats
+    // aggregate (avgDiffLines, largestDiffLines, commitsByRecommendedModel).
+    diff = gitHook.getDiffSize();
+    var rec = gitHook.recommendModelForDiff(diff, gitCfg);
+    recommended = rec.model;
+    msgs.push("[Git Router] Commit detected. Diff: " + (diff ? diff.files + " file(s), +" + diff.insertions + "/-" + diff.deletions : "(no stats)") + " → message generation should use " + recommended + " (" + rec.reason + ")");
   } else if (op === "push") {
     var fp = (gitCfg.warnForcePush !== false) ? gitHook.checkForcePush(cmd) : null;
     if (fp) msgs.push(fp.warning);
@@ -84,7 +91,9 @@ function runGit(data, cfg) {
       fs.appendFileSync(statsFile, JSON.stringify({
         timestamp: new Date().toISOString(),
         op: op,
-        cmd: cmd.slice(0, 120)
+        cmd: cmd.slice(0, 120),
+        diff: diff,
+        recommended: recommended
       }) + "\n", "utf8");
     } catch (e) {}
   }
